@@ -1,0 +1,138 @@
+######################################
+# General
+######################################
+*.swp
+*.swo
+*.tmp
+*.bak
+*.old
+*~
+.DS_Store
+Thumbs.db
+
+######################################
+# Build output (GCC / Makefile)
+######################################
+/build/
+/Build/
+/Debug/
+/Release/
+/cmake-build-*/
+/out/
+
+*.o
+*.d
+*.elf
+*.map
+*.hex
+*.bin
+*.lst
+*.sym
+
+######################################
+# STM32CubeIDE
+######################################
+/.metadata/
+/.settings/
+/Debug_STM32CubeIDE/
+/Release_STM32CubeIDE/
+*.launch
+*.log
+
+######################################
+# CubeMX temporary / backup files
+######################################
+*.mxproject
+*.ioc.bak
+*.ioc.old
+
+######################################
+# Keil uVision
+######################################
+*.uvoptx
+*.uvprojx
+*.dep
+*.htm
+*.crf
+*.iex
+*.lnp
+*.map
+*.pack
+*.pdsc
+*.uvguix.*
+*.scvd
+
+######################################
+# IAR Embedded Workbench
+######################################
+*.ewp
+*.eww
+*.ewd
+*.ewt
+*.dep
+*.xcl
+*.sim
+*.dbg
+*.pbd
+*.pbdp
+*.pbi
+*.pbdp
+*.pbd
+
+######################################
+# VS Code
+######################################
+.vscode/
+*.code-workspace
+
+######################################
+# CMake
+######################################
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+######################################
+# Python (if you use scripts)
+######################################
+__pycache__/
+*.pyc
+
+######################################
+# lwIP (generated or build artifacts)
+######################################
+/LWIP/src/core/*.o
+/LWIP/src/netif/*.o
+/LWIP/src/api/*.o
+/LWIP/system/*.o
+
+######################################
+# OpenOCD / GDB
+######################################
+openocd.log
+gdb.txt
+core
+
+######################################
+# Segger Ozone / RTT
+######################################
+*.jlink
+JLinkSettings.ini
+JLinkLog.txt
+
+######################################
+# Coverage / Analysis tools
+######################################
+*.gcda
+*.gcno
+*.gcov
+
+######################################
+# User backups / experiments
+######################################
+*_WORKING_SNAPSHOT/
+*_OLD/
+*_BACKUP/
+*.zip
+*.7z
