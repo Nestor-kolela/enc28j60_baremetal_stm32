@@ -519,8 +519,8 @@ err_t ethernet_init(struct netif *netif)
 	netif->name[1] = 'n';
 	//
 	netif->flags |= NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP \
-			| NETIF_FLAG_IGMP | NETIF_FLAG_ETHERNET \
-			| NETIF_FLAG_LINK_UP | NETIF_FLAG_MLD6;
+			| NETIF_FLAG_IGMP \
+			| NETIF_FLAG_LINK_UP;
 	netif->mtu = 1500;
 	netif->output = etharp_output;
 	netif->linkoutput = enc28j60_translate;
@@ -542,6 +542,7 @@ err_t enc28j60_translate(struct netif *netif, struct pbuf *p)
 	enc28j60_etherTransmit(&dev, enc28j60_buffer, length);
 	return ERR_OK;
 }
+
 
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p)
 {

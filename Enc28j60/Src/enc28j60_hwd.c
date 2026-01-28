@@ -10,7 +10,7 @@
 #include "enc28j60_hwd.h"
 #include "log.h"
 
-static uint8_t const mac[6] = {0xEE, 0x6A, 0xAF, 0x16, 0x7C, 0x04};
+static uint8_t const mac[6] = {0xED, 0x6A, 0xAF, 0x16, 0x7C, 0x04};
 
 static void enc28j60_SoftReset(enc28j60Drv * dev);
 static void enc28j60_writeReg(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8Value);
@@ -722,8 +722,8 @@ enc28j60Drv dev =
 	.fncPtrcallBack			= NULL,
 	//3) Delay function call back
 	.fncPtrDelayFunc		= NULL,
-	//4) Bank 0 constant definitions. 
-	.bank0 = 
+	//4) Bank 0 constant definitions.
+	.bank0 =
 	{
 		.ERDPTL				= BANK_0 | 0x00,
 		.ERDPTH				= BANK_0 | 0x01,
@@ -761,7 +761,7 @@ enc28j60Drv dev =
 		}
 	},
 	//5) Bank 1 constant definitions.
-	.bank1 = 
+	.bank1 =
 	{
 		.EHT0				= BANK_1 | 0x00,
 		.EHT1				= BANK_1 | 0x01,
@@ -799,7 +799,7 @@ enc28j60Drv dev =
 		}
 	},
 	//6) Bank 2 constant definitions.
-	.bank2 = 
+	.bank2 =
 	{
 		.MACON1				= BANK_2 | 0x00,
 		.MACON2				= BANK_2 | 0x01,
@@ -837,7 +837,7 @@ enc28j60Drv dev =
 		}
 	},
 	//7) Bank 3 constant definitions.
-	.bank3 = 
+	.bank3 =
 	{
 		.MAADR1				= BANK_3 | 0x00,
 		.MAADR0				= BANK_3 | 0x01,
@@ -877,7 +877,7 @@ enc28j60Drv dev =
 		}
 	},
 	//8) PHY Register Definitions
-	.phyReg = 
+	.phyReg =
 	{
 		.PHCON1 	= 0x00,
 		.PHSTAT1 	= 0x01,
