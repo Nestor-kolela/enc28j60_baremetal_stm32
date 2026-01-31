@@ -60,17 +60,27 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 extern enc28j60Drv dev;
 
-#if 0
-static ip4_addr_t ip = {.addr = 1};
-static ip4_addr_t gw = {.addr = 1};
-static ip4_addr_t msk = {.addr = 4294967040};
-#endif
-
-static volatile uint32_t enc28j60intCounter = 0;
-static volatile uint32_t u32FinerTimer = 0;
-static volatile uint32_t u32CoarseTimer = 0;
+static volatile uint32_t enc28j60intCounter;
+static volatile uint32_t u32FinerTimer;
+static volatile uint32_t u32CoarseTimer;
+static volatile uint8_t timeForDns;
+static volatile bool dnsRequest;
 static struct netif my_netif;
 static struct dhcp myDhcpClient;
+
+struct mqttBrokerDetails {
+	const char * name;
+	ip_addr_t ip;
+	const char * user;
+	const char * password;
+};
+
+struct mqttBrokerDetails mqttBroker = {
+		.name = "test.mosquitto.org",
+		.ip = 0,
+		.user = "",
+		.password = ""
+};
 
 /* USER CODE END PV */
 
@@ -84,6 +94,9 @@ static void MX_TIM2_Init(void);
 err_t ethernet_init(struct netif *netif);
 err_t enc28j60_translate(struct netif *netif, struct pbuf *p);
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p);
+
+static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -151,24 +164,38 @@ int main(void)
   dhcp_set_struct(&my_netif, &myDhcpClient);
   dhcp_start(&my_netif);
 
+  dns_init();
+
+  //Set the server
+  ip_addr_t dnsServer;
+  IP4_ADDR(&dnsServer, 8, 8, 8, 8);
+  dns_setserver(0, &dnsServer);
+
+  ip_addr_t mosquitoIp;
+  dns_gethostbyname(mqttBroker.name, &mosquitoIp, ipObtained, NULL);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  if(u32FinerTimer >= 1)
-	  {
+	  if(u32FinerTimer >= 1) {
+		  u32FinerTimer -= 1;
 		  dhcp_fine_tmr();
 		  HAL_GPIO_TogglePin(GreenLED1_GPIO_Port, GreenLED1_Pin);
-		  u32FinerTimer = 0;
 	  }
 
-	  if(u32CoarseTimer >= 120)
-	  {
-		  u32CoarseTimer = 0;
+	  if(u32CoarseTimer >= 120) {
+		  u32CoarseTimer -= 120;
 		  dhcp_coarse_tmr();
 	  }
+
+	  if(timeForDns >= 2) {
+		  timeForDns -= 2;
+		  dns_tmr();
+	  }
+
 	  if(enc28j60intCounter > 0)
 	  {
 		  //Process the packet then decrement by one.
@@ -183,9 +210,6 @@ int main(void)
 
 			u8Value = enc28j60_readEtherReg(&dev, dev.bank0.commonRegs.EIR);
 			dMesgPrint(DEBUG_INFO, "EIR REG --> %u\r\n", u8Value);
-
-			//u16FullDuplex = enc28j60_readPhyReg(&dev, dev.phyReg.PHSTAT2);
-			//dMesgPrint(DEBUG_INFO, "PHY Duplex Status: %d\r\n", u16FullDuplex);
 
 			for (uint8_t cnt = 0; cnt < 8; cnt++) {
 
@@ -509,6 +533,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   {
 	  u32FinerTimer++;
 	  u32CoarseTimer++;
+	  timeForDns++;
   }
 
   /* USER CODE END Callback 1 */
@@ -543,7 +568,6 @@ err_t enc28j60_translate(struct netif *netif, struct pbuf *p)
 	return ERR_OK;
 }
 
-
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p)
 {
 	p->next = NULL;
@@ -553,6 +577,12 @@ void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p)
 	p->ref = 1;
 }
 
+
+static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg) {
+	if(strcmp(mqttBroker.name, name) == 0) {
+		mqttBroker.ip = *ipaddr;
+	}
+}
 
 /* USER CODE END 4 */
 

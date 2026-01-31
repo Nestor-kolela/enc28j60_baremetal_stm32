@@ -19,8 +19,6 @@ static uint8_t enc28j60_readMacMIIReg(enc28j60Drv * dev, uint8_t u8Reg);
 //static void enc28j60_BitFieldSet(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
 void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
 
-
-
 static void enc28j60_writePhyReg(enc28j60Drv * dev, uint8_t addr, uint16_t data);
 static uint16_t enc28j60_getPhyPartNumber(enc28j60Drv * dev);
 //static uint8_t enc28j60_getPhyRevNumber(enc28j60Drv * dev);
@@ -227,16 +225,13 @@ void enc28j60_sftRst(enc28j60Drv * dev)
 
 bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16_t length)
 {
-
 	//1) Start by writing to the initial address.
 	enc28j60_writeReg(dev, dev->bank0.EWRPTH, (uint8_t)((dev->txBufStartAddr.u16Val & 0xFF00) >> 0x08));
 	enc28j60_writeReg(dev, dev->bank0.EWRPTL, (uint8_t)(dev->txBufStartAddr.u16Val & 0x00FF));
 
-
 	//1) Start by writing to the initial address.
 	enc28j60_writeReg(dev, dev->bank0.ETXSTH, (uint8_t)((dev->txBufStartAddr.u16Val & 0xFF00) >> 0x08));
 	enc28j60_writeReg(dev, dev->bank0.ETXSTL, (uint8_t)(dev->txBufStartAddr.u16Val & 0x00FF));
-
 
 	//Start loading the data into the buffer.
 	dev->spi.fncPtrCS();
@@ -259,7 +254,6 @@ bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16
 	// Then program the EXTND pointer
 	enc28j60_writeReg(dev, dev->bank0.ETXNDH, (uint8_t)((dev->txPkt.txPktLen.u16PktLen & 0xFF00) >> 0x08));
 	enc28j60_writeReg(dev, dev->bank0.ETXNDL, (uint8_t)(dev->txPkt.txPktLen.u16PktLen & 0x00FF));
-
 
 	// Clear EIR.TXIF
 	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIR, 1 << 3);
