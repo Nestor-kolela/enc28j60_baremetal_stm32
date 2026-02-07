@@ -29,6 +29,8 @@
 #include "lwip/dhcp.h"
 #include "lwip/dns.h"
 #include "lwip/etharp.h"
+#include "lwip/apps/mqtt.h"
+#include "lwip/apps/mqtt_priv.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -77,7 +79,7 @@ struct mqttBrokerDetails {
 
 struct mqttBrokerDetails mqttBroker = {
 		.name = "test.mosquitto.org",
-		.ip = 0,
+		.ip = {0},
 		.user = "",
 		.password = ""
 };
@@ -173,6 +175,25 @@ int main(void)
 
   ip_addr_t mosquitoIp;
   dns_gethostbyname(mqttBroker.name, &mosquitoIp, ipObtained, NULL);
+
+  mqtt_client_t * myMqtt = (mqtt_client_t *) mqtt_client_new();
+  if(myMqtt == NULL) while(1);
+
+  /*
+	struct mqtt_client_s
+	{
+	  struct altcp_pcb *conn;
+	  struct mqtt_request_t *pend_req_queue;
+	  struct mqtt_request_t req_list[MQTT_REQ_MAX_IN_FLIGHT];
+	  void *inpub_arg;
+	  mqtt_incoming_data_cb_t data_cb;
+	  mqtt_incoming_publish_cb_t pub_cb;
+
+	  u32_t msg_idx;
+	  u8_t rx_buffer[MQTT_VAR_HEADER_BUFFER_LEN];
+	  struct mqtt_ringbuf_t output;
+	};
+   * */
 
   /* USER CODE END 2 */
 
@@ -509,7 +530,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == GPIO_PIN_7)
@@ -576,7 +596,6 @@ void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p)
 	memcpy((uint8_t *) p->payload, dev->rxPkt.data, dev->rxPkt.rxPktLen.u16PktLen);
 	p->ref = 1;
 }
-
 
 static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg) {
 	if(strcmp(mqttBroker.name, name) == 0) {
