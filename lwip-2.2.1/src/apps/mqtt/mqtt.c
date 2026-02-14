@@ -59,6 +59,7 @@
 #include "lwip/altcp_tls.h"
 #include <string.h>
 
+#define MQTT_DEBUG	1
 #if LWIP_TCP && LWIP_CALLBACK_API
 
 /**

@@ -39,7 +39,28 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum Connection_State {
+	START_UP,
+	DHCP_IP_RECEIVED,
+	DNS_IP_OBTAINED,
+	MQTT_CONNECTING,
+	MQTT_CONNECTED,
+	MQTT_DISCONNECTED,
+};
 
+struct mqttBrokerDetails {
+	const char * name;
+	ip_addr_t ip;
+	const char * user;
+	const char * password;
+};
+
+struct mqttBrokerDetails mqttBroker = {
+		.name = "test.mosquitto.org",
+		.ip = {0},
+		.user = "",
+		.password = ""
+};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -66,24 +87,13 @@ static volatile uint32_t enc28j60intCounter;
 static volatile uint32_t u32FinerTimer;
 static volatile uint32_t u32CoarseTimer;
 static volatile uint8_t timeForDns;
+static volatile uint32_t u32MqttCounter;
 static volatile bool dnsRequest;
 static struct netif my_netif;
 static struct dhcp myDhcpClient;
-
-struct mqttBrokerDetails {
-	const char * name;
-	ip_addr_t ip;
-	const char * user;
-	const char * password;
-};
-
-struct mqttBrokerDetails mqttBroker = {
-		.name = "test.mosquitto.org",
-		.ip = {0},
-		.user = "",
-		.password = ""
-};
-
+static enum Connection_State myConn = START_UP;
+static mqtt_client_t * myMqtt = NULL;
+static bool bSubscribed = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -98,7 +108,8 @@ err_t enc28j60_translate(struct netif *netif, struct pbuf *p);
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p);
 
 static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg);
-
+static void myMqttClientCallBack(mqtt_client_t *client, void *arg, mqtt_connection_status_t status);
+static void publishIncoming(void *arg, const char *topic, u32_t tot_len);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -176,24 +187,24 @@ int main(void)
   ip_addr_t mosquitoIp;
   dns_gethostbyname(mqttBroker.name, &mosquitoIp, ipObtained, NULL);
 
-  mqtt_client_t * myMqtt = (mqtt_client_t *) mqtt_client_new();
-  if(myMqtt == NULL) while(1);
+  myMqtt = (mqtt_client_t *) mqtt_client_new();
 
-  /*
-	struct mqtt_client_s
-	{
-	  struct altcp_pcb *conn;
-	  struct mqtt_request_t *pend_req_queue;
-	  struct mqtt_request_t req_list[MQTT_REQ_MAX_IN_FLIGHT];
-	  void *inpub_arg;
-	  mqtt_incoming_data_cb_t data_cb;
-	  mqtt_incoming_publish_cb_t pub_cb;
+  if(!myMqtt) while(1);
 
-	  u32_t msg_idx;
-	  u8_t rx_buffer[MQTT_VAR_HEADER_BUFFER_LEN];
-	  struct mqtt_ringbuf_t output;
-	};
-   * */
+  static const struct mqtt_connect_client_info_t myInfo =
+  {
+      .client_id = "mqtt-nestor-kalambay",
+      .client_user = NULL,
+      .client_pass = NULL,
+
+      .keep_alive = 60,
+
+      .will_topic = "nestor/status",
+      .will_msg = "offline",
+      .will_msg_len = 7,
+      .will_qos = 0,
+      .will_retain = 1
+  };
 
   /* USER CODE END 2 */
 
@@ -215,6 +226,39 @@ int main(void)
 	  if(timeForDns >= 2) {
 		  timeForDns -= 2;
 		  dns_tmr();
+	  }
+
+	  switch(myConn) {
+	  case START_UP:
+		  break;
+	  case DHCP_IP_RECEIVED:
+		  break;
+	  case DNS_IP_OBTAINED:
+
+		  if(ERR_OK == mqtt_client_connect(myMqtt, &mqttBroker.ip, 1883, myMqttClientCallBack, (void *) &myConn, &myInfo)) {
+			  myConn = MQTT_CONNECTING;
+		  }
+		  break;
+	  case MQTT_CONNECTING:
+
+		  break;
+
+	  case MQTT_CONNECTED:
+		  if(u32MqttCounter >= 30) {
+			  u32MqttCounter -= 30;
+			  const char* message = "This message is coming from an alien who just landed in south Africa";
+			  (void) mqtt_publish(myMqtt, "franzkafka", message, strlen(message), 0, 0, NULL, NULL);
+		  }
+
+		  if(bSubscribed == false) {
+			  bSubscribed = true;
+			  mqtt_set_inpub_callback(myMqtt, publishIncoming, NULL, NULL);
+			  mqtt_subscribe(myMqtt, "$SYS/broker/uptime", 0, NULL, NULL);
+			  mqtt_subscribe(myMqtt, "franzkafka", 0, NULL, NULL);
+		  }
+		  break;
+	  case MQTT_DISCONNECTED:
+		  break;
 	  }
 
 	  if(enc28j60intCounter > 0)
@@ -554,6 +598,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	  u32FinerTimer++;
 	  u32CoarseTimer++;
 	  timeForDns++;
+	  u32MqttCounter++;
   }
 
   /* USER CODE END Callback 1 */
@@ -600,9 +645,30 @@ void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p)
 static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg) {
 	if(strcmp(mqttBroker.name, name) == 0) {
 		mqttBroker.ip = *ipaddr;
+		myConn = DNS_IP_OBTAINED;
 	}
 }
 
+static void myMqttClientCallBack(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
+	enum Connection_State * ptr = (enum Connection_State * ) arg;
+	if(client == myMqtt) {
+		switch(status) {
+		case MQTT_CONNECT_ACCEPTED:
+ 			*ptr = (enum Connection_State) MQTT_CONNECTED;
+			break;
+		case MQTT_CONNECT_DISCONNECTED:
+			*ptr = (enum Connection_State) MQTT_DISCONNECTED;
+			break;
+		default:
+			while(1);
+			break;
+		}
+	}
+}
+
+static void publishIncoming(void *arg, const char *topic, u32_t tot_len) {
+	dMesgPrint(DEBUG_INFO, "Data arrived on %s\r\n", topic);
+}
 /* USER CODE END 4 */
 
 /**
