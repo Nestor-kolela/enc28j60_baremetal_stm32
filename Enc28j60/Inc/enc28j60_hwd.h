@@ -5,8 +5,8 @@
  *      Author: NK Kalambay
  */
 
-#ifndef ENC28J60_HWD_H_
-#define ENC28J60_HWD_H_
+#ifndef _ENC28J60_HWD_H_
+#define _ENC28J60_HWD_H_
 
 #include <stdbool.h>
 
@@ -341,17 +341,11 @@ typedef struct __attribute__((packed)) _enc28j60_rx_packet
 
 typedef struct __attribute__((packed)) _enc28j60_tx_packet
 {
-	//Destination Address
-	DestAddr const txDstMacAddr;
-
 	//Packet Data
 	pktLength txPktLen;
 
-	//Data and all possible padding
+	//Data buffer
 	uint8_t	data[1500];
-
-	//Status Vector are Written by the hardware
-
 }enc28j60_tx_packet;
 
 typedef struct _enc28j60_driver
@@ -365,7 +359,6 @@ typedef struct _enc28j60_driver
 	enc28j60_bank_3 const bank3;
 	phy_registers const phyReg;
 	enc28j60_opcode const opcode;
-	volatile bool bInterruptFlag;
 	encj28j60_bank bnBank;
 
 	//Address
@@ -378,7 +371,7 @@ typedef struct _enc28j60_driver
 
 	//Mac Address
 	SrcAddr mac;
-	//Buffers
+
 	enc28j60_rx_packet rxPkt;
 	enc28j60_tx_packet txPkt;
 
@@ -387,12 +380,8 @@ typedef struct _enc28j60_driver
 void enc28j60_initDr(enc28j60Drv * dev, spiChipSel cs, spiChipDSl dCS, slaveRead rd, slaveWrite wr, intHandler hdle, delayMs delay);
 void enc28j60_strtDr(enc28j60Drv * dev);
 void enc28j60_sftRst(enc28j60Drv * dev);
-bool enc28j60_intPnd(enc28j60Drv * dev);
-void enc28j60_intSet(enc28j60Drv * dev);
-void enc28j60_intCls(enc28j60Drv * dev);
 
-//bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16_t length);
-bool enc28j60_etherReceive(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16_t length);
+bool enc28j60_etherReceive(enc28j60Drv * dev);
 bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16_t length);
 
 uint8_t enc28j60_getEtherInterrupt(enc28j60Drv * dev);
@@ -402,6 +391,17 @@ uint8_t enc28j60_getwakeUpInterrupt(enc28j60Drv * dev);
 uint8_t enc28j60_getPhyRevNumber(enc28j60Drv * dev);
 uint8_t enc28j60_readEtherReg(enc28j60Drv * dev, uint8_t u8Reg);
 uint16_t enc28j60_readPhyReg(enc28j60Drv * dev, uint8_t addr);
+
 void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
 void enc28j60_BitFieldSet(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
-#endif /* ENC28J60_HWD_H_ */
+
+uint8_t enc28j60_getPhyRevNumber(enc28j60Drv * dev);
+bool enc28j60_getPhylinkHasBeenDown(enc28j60Drv * dev);
+bool enc28j60_getPhyjabberStatusBit(enc28j60Drv * dev);
+bool enc28j60_getPhyPolarityStatus(enc28j60Drv * dev);
+bool enc28j60_getPhyDuplexStatus(enc28j60Drv * dev);
+bool enc28j60_getPhyLinkStatus(enc28j60Drv * dev);
+bool enc28j60_getPhyCollisionStatus(enc28j60Drv * dev);
+bool enc28j60_getPhyIsRxStatus(enc28j60Drv * dev);
+bool enc28j60_getPhyIsTxStatus(enc28j60Drv * dev);
+#endif /* _ENC28J60_HWD_H_ */

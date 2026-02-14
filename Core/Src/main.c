@@ -159,7 +159,6 @@ int main(void)
   lwip_init();
 
   // Add network interface
-  //netif_add(&my_netif, &ip, &msk, &gw, NULL, ethernet_init, ethernet_input);
   netif_add_noaddr(&my_netif, NULL, ethernet_init, ethernet_input);
   netif_set_addr(&my_netif, IP4_ADDR_ANY, IP4_ADDR_ANY, IP4_ADDR_ANY);
 
@@ -172,7 +171,7 @@ int main(void)
   uint32_t u32PacketCounter = 0;
   uint8_t u8PktCount = 0;
   uint8_t u8Value = 0;
-  uint8_t * u8TempValue = NULL;
+  //uint8_t * u8TempValue = NULL;
 
   dhcp_set_struct(&my_netif, &myDhcpClient);
   dhcp_start(&my_netif);
@@ -319,7 +318,7 @@ int main(void)
 						if(u8PktCount > 0)
 						{
 							bool err;
-							err = enc28j60_etherReceive(&dev, u8TempValue, 0);
+							err = enc28j60_etherReceive(&dev);
 							if (err == true) {
 								//Packet number
 								dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
@@ -603,8 +602,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
   /* USER CODE END Callback 1 */
 }
-err_t ethernet_init(struct netif *netif)
-{
+err_t ethernet_init(struct netif *netif) {
 	netif->name[0] = 'e';
 	netif->name[1] = 'n';
 	//
@@ -623,18 +621,14 @@ err_t ethernet_init(struct netif *netif)
 	return ERR_OK;
 }
 
-static uint8_t enc28j60_buffer[1500];
-err_t enc28j60_translate(struct netif *netif, struct pbuf *p)
-{
-	//This function should transmit
+err_t enc28j60_translate(struct netif *netif, struct pbuf *p) {
 	uint16_t length = p->len;
-	memcpy(enc28j60_buffer, (uint8_t *) p->payload, length);
-	enc28j60_etherTransmit(&dev, enc28j60_buffer, length);
+	memcpy(dev.txPkt.data, (uint8_t *) p->payload, length);
+	enc28j60_etherTransmit(&dev, dev.txPkt.data, length);
 	return ERR_OK;
 }
 
-void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p)
-{
+void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p) {
 	p->next = NULL;
 	p->len = dev->rxPkt.rxPktLen.u16PktLen;
 	p->payload = dev->rxPkt.data;
