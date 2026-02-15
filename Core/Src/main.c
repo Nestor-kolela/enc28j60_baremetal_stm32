@@ -324,10 +324,12 @@ int main(void)
 
 						//Let do the translation from array to pbuf
 						uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
-						struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
+						struct pbuf * ethBuffer = pbuf_alloc(PBUF_RAW, u18length, PBUF_POOL);
 						if(ethBuffer != NULL) {
 							ethernet_do_translation_to_pbub(&dev, ethBuffer);
-							netif_input(ethBuffer, &my_netif);
+							if (netif_input(ethBuffer, &my_netif) != ERR_OK) {
+								pbuf_free(ethBuffer);
+							}
 						}
 					}
 
@@ -622,11 +624,8 @@ err_t enc28j60_translate(struct netif *netif, struct pbuf *p) {
 }
 
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p) {
-	p->next = NULL;
-	p->len = dev->rxPkt.rxPktLen.u16PktLen;
-	p->payload = dev->rxPkt.data;
-	memcpy((uint8_t *) p->payload, dev->rxPkt.data, dev->rxPkt.rxPktLen.u16PktLen);
-	p->ref = 1;
+	uint16_t len = dev->rxPkt.rxPktLen.u16PktLen;
+	pbuf_take(p, dev->rxPkt.data, len);
 }
 
 static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg) {
