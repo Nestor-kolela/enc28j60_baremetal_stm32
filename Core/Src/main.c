@@ -171,21 +171,11 @@ int main(void)
   uint32_t u32PacketCounter = 0;
   uint8_t u8PktCount = 0;
   uint8_t u8Value = 0;
-  //uint8_t * u8TempValue = NULL;
 
   dhcp_set_struct(&my_netif, &myDhcpClient);
   dhcp_start(&my_netif);
 
-  dns_init();
-
-  //Set the server
-  ip_addr_t dnsServer;
-  IP4_ADDR(&dnsServer, 8, 8, 8, 8);
-  dns_setserver(0, &dnsServer);
-
-  ip_addr_t mosquitoIp;
-  dns_gethostbyname(mqttBroker.name, &mosquitoIp, ipObtained, NULL);
-
+  bool enableDns = false;
   myMqtt = (mqtt_client_t *) mqtt_client_new();
 
   if(!myMqtt) while(1);
@@ -222,15 +212,29 @@ int main(void)
 		  dhcp_coarse_tmr();
 	  }
 
-	  if(timeForDns >= 2) {
+	  if(timeForDns >= 2 && enableDns == true) {
 		  timeForDns -= 2;
 		  dns_tmr();
 	  }
 
 	  switch(myConn) {
 	  case START_UP:
+		  if(dhcp_supplied_address(&my_netif)) {
+
+			  dns_init();
+			  ip_addr_t dnsServer;
+			  IP4_ADDR(&dnsServer, 8, 8, 8, 8);
+			  dns_setserver(0, &dnsServer);
+
+			  ip_addr_t mosquitoIp;
+			  dns_gethostbyname(mqttBroker.name, &mosquitoIp, ipObtained, NULL);
+
+			  enableDns = true;
+			  myConn = DHCP_IP_RECEIVED;
+		  }
 		  break;
 	  case DHCP_IP_RECEIVED:
+
 		  break;
 	  case DNS_IP_OBTAINED:
 
@@ -260,17 +264,9 @@ int main(void)
 		  break;
 	  }
 
-	  if(enc28j60intCounter > 0)
-	  {
+	  if(enc28j60intCounter > 0) {
 		  //Process the packet then decrement by one.
 		  enc28j60intCounter--;
-
-			u8PktCount = enc28j60_readEtherReg(&dev, dev.bank1.EPKTCNT);
-			dMesgPrint(DEBUG_INFO, "EPKTCNT count --> %d\r\n", u8PktCount);
-
-			volatile uint8_t u8DeviceId = enc28j60_readEtherReg(&dev, dev.bank3.EREVID);
-
-			dMesgPrint(DEBUG_INFO, "Device ID: 0x%02X\r\n", u8DeviceId);
 
 			u8Value = enc28j60_readEtherReg(&dev, dev.bank0.commonRegs.EIR);
 			dMesgPrint(DEBUG_INFO, "EIR REG --> %u\r\n", u8Value);
@@ -315,32 +311,28 @@ int main(void)
 
 					case 6:
 						dMesgPrint(DEBUG_INFO, "6) Receive Packet Pending Interrupt Flag bit\r\n");
-						if(u8PktCount > 0)
-						{
-							bool err;
-							err = enc28j60_etherReceive(&dev);
-							if (err == true) {
-								//Packet number
-								dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
+						bool err = enc28j60_etherReceive(&dev);
+						//Clear the flag for interrupts.
+						enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.ECON2, (1 << cnt));
+						if (err == true) {
+							//Packet number
+							dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
 
-								//Packet length
-								dMesgPrint(DEBUG_INFO, "PKT length %d\r\n", dev.rxPkt.rxPktLen.u16PktLen);
+							//Packet length
+							dMesgPrint(DEBUG_INFO, "PKT length %d\r\n", dev.rxPkt.rxPktLen.u16PktLen);
 
-								//Let do the translation from array to pbuf
-								uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
-								struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
-								if(ethBuffer != NULL)
-								{
-									ethernet_do_translation_to_pbub(&dev, ethBuffer);
-									netif_input(ethBuffer, &my_netif);
-								}
+							//Let do the translation from array to pbuf
+							uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
+							struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
+							if(ethBuffer != NULL) {
+								ethernet_do_translation_to_pbub(&dev, ethBuffer);
+								netif_input(ethBuffer, &my_netif);
 							}
 						}
 
 						break;
 					}
 
-					//1) Here
 					//Clear the interrupt bit.
 					enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.EIE, 1 << 7);
 				}
@@ -422,7 +414,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

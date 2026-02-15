@@ -15,29 +15,16 @@ static uint8_t const mac[6] = {0xED, 0x6A, 0xAF, 0x16, 0x7C, 0x04};
 
 static void enc28j60_SoftReset(enc28j60Drv * dev);
 static void enc28j60_writeReg(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8Value);
-static uint8_t enc28j60_readMacMIIReg(enc28j60Drv * dev, uint8_t u8Reg);
-void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
-
 static void enc28j60_writePhyReg(enc28j60Drv * dev, uint8_t addr, uint16_t data);
-static uint16_t enc28j60_getPhyPartNumber(enc28j60Drv * dev);
-static uint32_t enc28j60_getPhyIdentifier(enc28j60Drv * dev);
-#if 0
-static bool enc28j60_getPhylinkHasBeenDown(enc28j60Drv * dev);
-static bool enc28j60_getPhyjabberStatusBit(enc28j60Drv * dev);
-static bool enc28j60_getPhyPolarityStatus(enc28j60Drv * dev);
-static bool enc28j60_getPhyDuplexStatus(enc28j60Drv * dev);
-static bool enc28j60_getPhyLinkStatus(enc28j60Drv * dev);
-static bool enc28j60_getPhyCollisionStatus(enc28j60Drv * dev);
-static bool enc28j60_getPhyIsRxStatus(enc28j60Drv * dev);
-static bool enc28j60_getPhyIsTxStatus(enc28j60Drv * dev);
-
-#endif
 static void enc2860_phyInit(enc28j60Drv * dev);
 static void enc2860_macInit(enc28j60Drv * dev);
 static void enc28j60_rxSetFilters(enc28j60Drv * dev, rx_filter_control filter);
 
 static encj28j60_bank convertRegValToBank(uint8_t value);
 static uint8_t convertBankToBits(encj28j60_bank bBank);
+static uint8_t enc28j60_readMacMIIReg(enc28j60Drv * dev, uint8_t u8Reg);
+static uint16_t enc28j60_getPhyPartNumber(enc28j60Drv * dev);
+static uint32_t enc28j60_getPhyIdentifier(enc28j60Drv * dev);
 
 static void enc2860_macInit(enc28j60Drv * dev) {
 
@@ -67,7 +54,6 @@ static void enc2860_macInit(enc28j60Drv * dev) {
 	enc28j60_writeReg(dev, dev->bank3.MAADR3, dev->mac.u8Mac3);
 	enc28j60_writeReg(dev, dev->bank3.MAADR4, dev->mac.u8Mac4);
 	enc28j60_writeReg(dev, dev->bank3.MAADR5, dev->mac.u8Mac5);
-
 }
 
 static void enc2860_phyInit(enc28j60Drv * dev) {
@@ -466,9 +452,6 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 
 	//We are done
 	dev->spi.fncPtrChipDS();
-
-	//Clear the flag for interrupts.
-	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON2, (1 << 6));
 
 	return bReturnValue;
 }
