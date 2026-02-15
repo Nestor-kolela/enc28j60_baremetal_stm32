@@ -26,6 +26,9 @@ static uint8_t enc28j60_readMacMIIReg(enc28j60Drv * dev, uint8_t u8Reg);
 static uint16_t enc28j60_getPhyPartNumber(enc28j60Drv * dev);
 static uint32_t enc28j60_getPhyIdentifier(enc28j60Drv * dev);
 
+static void enc28j60_BitFieldSet(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
+static void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
+
 static void enc2860_macInit(enc28j60Drv * dev) {
 
 	uint8_t u8TempValueHolder = enc28j60_readMacMIIReg(dev, dev->bank2.MACLCON2);
@@ -174,6 +177,26 @@ static uint32_t enc28j60_getPhyIdentifier(enc28j60Drv * dev) {
 	u32returnValue |= ((uint32_t) enc28j60_readPhyReg(dev, dev->phyReg.PHID2) << 0x09);
 
 	return u32returnValue;
+}
+
+static void enc28j60_BitFieldSet(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data) {
+	encj28j60_bank bBank = convertRegValToBank(u8Reg);
+	if(bBank != dev->bnBank) enc28j60_bankChange(dev, bBank);
+	uint8_t u8Command = (dev->opcode.u8BitFieldSet) | (0x1F & u8Reg);
+	dev->spi.fncPtrCS();
+	dev->spi.fncPtrWrite(&u8Command, 1);
+	dev->spi.fncPtrWrite(&u8data, 1);
+	dev->spi.fncPtrChipDS();
+}
+
+static void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data) {
+	encj28j60_bank bBank = convertRegValToBank(u8Reg);
+	if(bBank != dev->bnBank) enc28j60_bankChange(dev, bBank);
+	uint8_t u8Command = (dev->opcode.u8BitFieldClear) | (0x1F & u8Reg);
+	dev->spi.fncPtrCS();
+	dev->spi.fncPtrWrite(&u8Command, 1);
+	dev->spi.fncPtrWrite(&u8data, 1);
+	dev->spi.fncPtrChipDS();
 }
 
 uint8_t enc28j60_getEtherInterrupt(enc28j60Drv * dev) {
@@ -444,27 +467,6 @@ uint8_t enc28j60_readEtherReg(enc28j60Drv * dev, uint8_t u8Reg) {
 	return u8ReturnValue;
 }
 
-void enc28j60_BitFieldSet(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data) {
-	encj28j60_bank bBank = convertRegValToBank(u8Reg);
-	if(bBank != dev->bnBank) enc28j60_bankChange(dev, bBank);
-	uint8_t u8Command = (dev->opcode.u8BitFieldSet) | (0x1F & u8Reg);
-	dev->spi.fncPtrCS();
-	dev->spi.fncPtrWrite(&u8Command, 1);
-	dev->spi.fncPtrWrite(&u8data, 1);
-	dev->spi.fncPtrChipDS();
-}
-
-void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data)
-{
-	encj28j60_bank bBank = convertRegValToBank(u8Reg);
-	if(bBank != dev->bnBank) enc28j60_bankChange(dev, bBank);
-	uint8_t u8Command = (dev->opcode.u8BitFieldClear) | (0x1F & u8Reg);
-	dev->spi.fncPtrCS();
-	dev->spi.fncPtrWrite(&u8Command, 1);
-	dev->spi.fncPtrWrite(&u8data, 1);
-	dev->spi.fncPtrChipDS();
-}
-
 uint16_t enc28j60_readPhyReg(enc28j60Drv * dev, uint8_t addr)
 {
 	enc28j60_writeReg(dev, dev->bank2.MIREGADR, addr);
@@ -550,6 +552,29 @@ bool enc28j60_getPhyIsTxStatus(enc28j60Drv * dev)
 	return (u16returnValue & (1 << 13));
 }
 
+void enc28j60_clear_interrupt(enc28j60Drv * dev, enc28j60_eth_int_flag flags) {
+	uint8_t value = (uint8_t) flags;
+	if(value <= 64) {
+		if(flags == PKTIF) {
+			//Clear the flag for interrupts.
+			enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON2, (1 << 6));
+		}else {
+			enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIR, value);
+		}
+	}
+}
+
+void enc28j60_global_Int_Set(enc28j60Drv * dev) {
+	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.EIE, 1 << 7);
+}
+
+void enc28j60_global_int_Clear(enc28j60Drv * dev) {
+	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIE, 1 << 7);
+}
+
+void enc28j60_link_change_int_clear(enc28j60Drv * dev) {
+	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIE, 1 << 4);
+}
 enc28j60Drv dev = {
 	.spi 					= { .fncPtrCS = NULL, .fncPtrChipDS = NULL, .fncPtrWrite = NULL, .fncPtrRead = NULL},
 

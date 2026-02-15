@@ -31,6 +31,7 @@
 #include "lwip/etharp.h"
 #include "lwip/apps/mqtt.h"
 #include "lwip/apps/mqtt_priv.h"
+#include "arch/sys_arch.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -45,8 +46,8 @@ typedef enum Connection_State {
 	DNS_IP_OBTAINED,
 	MQTT_CONNECTING,
 	MQTT_CONNECTED,
-	MQTT_DISCONNECTED,
-};
+	MQTT_DISCONNECTED
+}Connection_State;
 
 struct mqttBrokerDetails {
 	const char * name;
@@ -242,7 +243,9 @@ int main(void)
 		  }
 		  break;
 	  case MQTT_CONNECTING:
+		  if(mqtt_client_is_connected(myMqtt) == 1) {
 
+		  }
 		  break;
 
 	  case MQTT_CONNECTED:
@@ -274,47 +277,49 @@ int main(void)
 		  for (uint8_t cnt = 0; cnt < 8; cnt++) {
 			if (u8Value & (1 << cnt)) {
 				//Allow for further interrupts to happen by making the pin go back high
-				enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIE, 1 << 7);
+				enc28j60_global_int_Clear(&dev);
 
 				switch (cnt) {
 				default:
 					break;
 				case 0:
 					dMesgPrint(DEBUG_ERROR, "1) Receive Error Interrupt Flag bit\r\n");
-					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					enc28j60_clear_interrupt(&dev, RXERIF);
 					break;
 
 				case 1:
 					dMesgPrint(DEBUG_ERROR, "2) Transmit Error Interrupt Flag bit\r\n");
-					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					enc28j60_clear_interrupt(&dev, TXERIF);
 					break;
 
 				case 2:
 					dMesgPrint(DEBUG_INFO, "3) WOL Interrupt Flag bit\r\n");
+					//enc28j60_clear_interrupt(&dev, WOLIF);
 					break;
 
 				case 3:
 					dMesgPrint(DEBUG_INFO, "4) Transmit Interrupt Flag bit\r\n");
-					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					enc28j60_clear_interrupt(&dev, TXIF);
 					break;
 
 				case 4:
 					dMesgPrint(DEBUG_INFO, "5) Link Change Interrupt Flag bit\r\n");
 					(void) enc28j60_readPhyReg(&dev, dev.phyReg.PHIR);
-					enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.EIE, 1 << cnt);
-
+					enc28j60_link_change_int_clear(&dev);
 					break;
 
 				case 5:
 					dMesgPrint(DEBUG_INFO, "5) DMA Interrupt Flag bit\r\n");
-					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					enc28j60_clear_interrupt(&dev, DMAIF);
 					break;
 
 				case 6:
 					dMesgPrint(DEBUG_INFO, "6) Receive Packet Pending Interrupt Flag bit\r\n");
+
 					bool err = enc28j60_etherReceive(&dev);
-					//Clear the flag for interrupts.
-					enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.ECON2, (1 << cnt));
+
+					enc28j60_clear_interrupt(&dev, PKTIF);
+
 					if (err == true) {
 						//Packet number
 						dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
@@ -337,7 +342,8 @@ int main(void)
 				}
 
 				//Clear the interrupt bit.
-				enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.EIE, 1 << 7);
+				enc28j60_global_Int_Set(&dev);
+
 				}
 			}
 	  }
@@ -593,6 +599,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	  u32CoarseTimer++;
 	  timeForDns++;
 	  u32MqttCounter++;
+	  sys_now_increment();
   }
 
   /* USER CODE END Callback 1 */

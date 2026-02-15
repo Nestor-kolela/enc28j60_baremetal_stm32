@@ -51,6 +51,7 @@ typedef enum _ether_interrutpt_flag
 	LINKIF	 	= (1 << 4),
 	DMAIF		= (1 << 5),
 	PKTIF		= (1 << 6),
+
 }enc28j60_eth_int_flag;
 
 typedef enum _phy_interrupt_flag
@@ -392,9 +393,6 @@ uint8_t enc28j60_getPhyRevNumber(enc28j60Drv * dev);
 uint8_t enc28j60_readEtherReg(enc28j60Drv * dev, uint8_t u8Reg);
 uint16_t enc28j60_readPhyReg(enc28j60Drv * dev, uint8_t addr);
 
-void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
-void enc28j60_BitFieldSet(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data);
-
 uint8_t enc28j60_getPhyRevNumber(enc28j60Drv * dev);
 bool enc28j60_getPhylinkHasBeenDown(enc28j60Drv * dev);
 bool enc28j60_getPhyjabberStatusBit(enc28j60Drv * dev);
@@ -404,4 +402,10 @@ bool enc28j60_getPhyLinkStatus(enc28j60Drv * dev);
 bool enc28j60_getPhyCollisionStatus(enc28j60Drv * dev);
 bool enc28j60_getPhyIsRxStatus(enc28j60Drv * dev);
 bool enc28j60_getPhyIsTxStatus(enc28j60Drv * dev);
+
+void enc28j60_clear_interrupt(enc28j60Drv * dev, enc28j60_eth_int_flag flags);
+void enc28j60_global_Int_Set(enc28j60Drv * dev);
+void enc28j60_global_int_Clear(enc28j60Drv * dev);
+void enc28j60_link_change_int_clear(enc28j60Drv * dev);
+
 #endif /* _ENC28J60_HWD_H_ */
