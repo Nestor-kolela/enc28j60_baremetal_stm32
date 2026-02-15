@@ -169,8 +169,7 @@ int main(void)
   netif_set_up(&my_netif);
 
   uint32_t u32PacketCounter = 0;
-  uint8_t u8PktCount = 0;
-  uint8_t u8Value = 0;
+
 
   dhcp_set_struct(&my_netif, &myDhcpClient);
   dhcp_start(&my_netif);
@@ -268,73 +267,75 @@ int main(void)
 		  //Process the packet then decrement by one.
 		  enc28j60intCounter--;
 
-			u8Value = enc28j60_readEtherReg(&dev, dev.bank0.commonRegs.EIR);
-			dMesgPrint(DEBUG_INFO, "EIR REG --> %u\r\n", u8Value);
+		  uint8_t u8Value = 0;
+		  u8Value = enc28j60_readEtherReg(&dev, dev.bank0.commonRegs.EIR);
+		  dMesgPrint(DEBUG_INFO, "EIR REG --> %u\r\n", u8Value);
 
-			for (uint8_t cnt = 0; cnt < 8; cnt++) {
+		  for (uint8_t cnt = 0; cnt < 8; cnt++) {
+			if (u8Value & (1 << cnt)) {
+				//Allow for further interrupts to happen by making the pin go back high
+				enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIE, 1 << 7);
 
-				if (u8Value & (1 << cnt)) {
-					//Allow for further interrupts to happen by making the pin go back high
-					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIE, 1 << 7);
+				switch (cnt) {
+				default:
+					break;
+				case 0:
+					dMesgPrint(DEBUG_ERROR, "1) Receive Error Interrupt Flag bit\r\n");
+					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					break;
 
-					switch (cnt) {
-					case 0:
-						dMesgPrint(DEBUG_ERROR, "1) Receive Error Interrupt Flag bit\r\n");
-						enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
-						break;
+				case 1:
+					dMesgPrint(DEBUG_ERROR, "2) Transmit Error Interrupt Flag bit\r\n");
+					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					break;
 
-					case 1:
-						dMesgPrint(DEBUG_ERROR, "2) Transmit Error Interrupt Flag bit\r\n");
-						enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
-						break;
+				case 2:
+					dMesgPrint(DEBUG_INFO, "3) WOL Interrupt Flag bit\r\n");
+					break;
 
-					case 2:
-						dMesgPrint(DEBUG_INFO, "3) WOL Interrupt Flag bit\r\n");
-						break;
+				case 3:
+					dMesgPrint(DEBUG_INFO, "4) Transmit Interrupt Flag bit\r\n");
+					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					break;
 
-					case 3:
-						dMesgPrint(DEBUG_INFO, "4) Transmit Interrupt Flag bit\r\n");
-						enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
-						break;
+				case 4:
+					dMesgPrint(DEBUG_INFO, "5) Link Change Interrupt Flag bit\r\n");
+					(void) enc28j60_readPhyReg(&dev, dev.phyReg.PHIR);
+					enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.EIE, 1 << cnt);
 
-					case 4:
-						dMesgPrint(DEBUG_INFO, "5) Link Change Interrupt Flag bit\r\n");
-						(void) enc28j60_readPhyReg(&dev, dev.phyReg.PHIR);
-						enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.EIE, 1 << cnt);
+					break;
 
-						break;
+				case 5:
+					dMesgPrint(DEBUG_INFO, "5) DMA Interrupt Flag bit\r\n");
+					enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+					break;
 
-					case 5:
-						dMesgPrint(DEBUG_INFO, "5) DMA Interrupt Flag bit\r\n");
-						enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
-						break;
+				case 6:
+					dMesgPrint(DEBUG_INFO, "6) Receive Packet Pending Interrupt Flag bit\r\n");
+					bool err = enc28j60_etherReceive(&dev);
+					//Clear the flag for interrupts.
+					enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.ECON2, (1 << cnt));
+					if (err == true) {
+						//Packet number
+						dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
 
-					case 6:
-						dMesgPrint(DEBUG_INFO, "6) Receive Packet Pending Interrupt Flag bit\r\n");
-						bool err = enc28j60_etherReceive(&dev);
-						//Clear the flag for interrupts.
-						enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.ECON2, (1 << cnt));
-						if (err == true) {
-							//Packet number
-							dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
+						//Packet length
+						dMesgPrint(DEBUG_INFO, "PKT length %d\r\n", dev.rxPkt.rxPktLen.u16PktLen);
 
-							//Packet length
-							dMesgPrint(DEBUG_INFO, "PKT length %d\r\n", dev.rxPkt.rxPktLen.u16PktLen);
-
-							//Let do the translation from array to pbuf
-							uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
-							struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
-							if(ethBuffer != NULL) {
-								ethernet_do_translation_to_pbub(&dev, ethBuffer);
-								netif_input(ethBuffer, &my_netif);
-							}
+						//Let do the translation from array to pbuf
+						uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
+						struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
+						if(ethBuffer != NULL) {
+							ethernet_do_translation_to_pbub(&dev, ethBuffer);
+							netif_input(ethBuffer, &my_netif);
 						}
-
-						break;
 					}
 
-					//Clear the interrupt bit.
-					enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.EIE, 1 << 7);
+					break;
+				}
+
+				//Clear the interrupt bit.
+				enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.EIE, 1 << 7);
 				}
 			}
 	  }

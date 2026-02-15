@@ -68,8 +68,7 @@ static void enc2860_phyInit(enc28j60Drv * dev) {
 }
 
 static void enc28j60_rxSetFilters(enc28j60Drv * dev, rx_filter_control filter) {
-	uint8_t u8CastValue = (uint8_t) filter;
-	enc28j60_writeReg(dev, dev->bank1.ERXFCON, u8CastValue);
+	enc28j60_writeReg(dev, dev->bank1.ERXFCON, (uint8_t) filter);
 }
 
 static void enc28j60_bankChange(enc28j60Drv * dev, encj28j60_bank bBank) {
@@ -112,35 +111,14 @@ static void enc28j60_bankChange(enc28j60Drv * dev, encj28j60_bank bBank) {
 		dev->spi.fncPtrChipDS();
 		dev->bnBank = bBank;
 	}
-
 }
 
 static encj28j60_bank convertRegValToBank(uint8_t value) {
-	encj28j60_bank bReturnValue = undefBank;
-	switch((value >> 06))
-	{
-		default:
-			break;
-		case 0:
-			bReturnValue = bank_0;
-			break;
-		case 1:
-			bReturnValue = bank_1;
-			break;
-		case 2:
-			bReturnValue = bank_2;
-			break;
-		case 3:
-			bReturnValue = bank_3;
-			break;
-	}
-	return bReturnValue;
+	return (encj28j60_bank) (value & 0xC0);
 }
 
 static uint8_t convertBankToBits(encj28j60_bank bBank) {
-	uint8_t u8TempValue = (uint8_t) bBank;
-	u8TempValue >>= 6u;
-	return u8TempValue;
+	return ((uint8_t) bBank) >> 6;
 }
 
 static uint8_t enc28j60_readMacMIIReg(enc28j60Drv * dev, uint8_t u8Reg) {
@@ -321,8 +299,6 @@ bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16
 
 	dev->spi.fncPtrWrite(u8PtrData, length);
 
-	//Add one byte for the control byte
-
 	// Then program the EXTND pointer
 	enc28j60_writeReg(dev, dev->bank0.ETXNDH, (uint8_t)((dev->txPkt.txPktLen.u16PktLen & 0xFF00) >> 0x08));
 	enc28j60_writeReg(dev, dev->bank0.ETXNDL, (uint8_t)(dev->txPkt.txPktLen.u16PktLen & 0x00FF));
@@ -479,7 +455,6 @@ void enc28j60_BitFieldSet(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data) {
 }
 
 void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data)
-//static void enc28j60_BitFieldClear(enc28j60Drv * dev, uint8_t u8Reg, uint8_t u8data)
 {
 	encj28j60_bank bBank = convertRegValToBank(u8Reg);
 	if(bBank != dev->bnBank) enc28j60_bankChange(dev, bBank);
