@@ -268,12 +268,6 @@ int main(void)
 		  //Process the packet then decrement by one.
 		  enc28j60intCounter--;
 
-			u8PktCount = enc28j60_readEtherReg(&dev, dev.bank1.EPKTCNT);
-			dMesgPrint(DEBUG_INFO, "EPKTCNT count --> %d\r\n", u8PktCount);
-
-			volatile uint8_t u8DeviceId = enc28j60_readEtherReg(&dev, dev.bank3.EREVID);
-			dMesgPrint(DEBUG_INFO, "Device ID: 0x%02X\r\n", u8DeviceId);
-
 			u8Value = enc28j60_readEtherReg(&dev, dev.bank0.commonRegs.EIR);
 			dMesgPrint(DEBUG_INFO, "EIR REG --> %u\r\n", u8Value);
 
@@ -317,22 +311,22 @@ int main(void)
 
 					case 6:
 						dMesgPrint(DEBUG_INFO, "6) Receive Packet Pending Interrupt Flag bit\r\n");
-						if(u8PktCount > 0) {
-							bool err = enc28j60_etherReceive(&dev);
-							if (err == true) {
-								//Packet number
-								dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
+						bool err = enc28j60_etherReceive(&dev);
+						//Clear the flag for interrupts.
+						enc28j60_BitFieldSet(&dev, dev.bank0.commonRegs.ECON2, (1 << cnt));
+						if (err == true) {
+							//Packet number
+							dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
 
-								//Packet length
-								dMesgPrint(DEBUG_INFO, "PKT length %d\r\n", dev.rxPkt.rxPktLen.u16PktLen);
+							//Packet length
+							dMesgPrint(DEBUG_INFO, "PKT length %d\r\n", dev.rxPkt.rxPktLen.u16PktLen);
 
-								//Let do the translation from array to pbuf
-								uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
-								struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
-								if(ethBuffer != NULL) {
-									ethernet_do_translation_to_pbub(&dev, ethBuffer);
-									netif_input(ethBuffer, &my_netif);
-								}
+							//Let do the translation from array to pbuf
+							uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
+							struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
+							if(ethBuffer != NULL) {
+								ethernet_do_translation_to_pbub(&dev, ethBuffer);
+								netif_input(ethBuffer, &my_netif);
 							}
 						}
 
@@ -420,7 +414,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
