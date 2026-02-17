@@ -273,7 +273,7 @@ void enc28j60_strtDr(enc28j60Drv * dev) {
 	enc2860_macInit(dev);
 
 	//Program receive filters
-	enc28j60_rxSetFilters(dev, RX_UNICAST | RX_CRC_CHECK | RX_MULTICAST | RX_BROADCAST);
+	enc28j60_rxSetFilters(dev, RX_UNICAST | RX_CRC_CHECK | RX_BROADCAST);
 
 	//Enable all interrupts
 	enc28j60_writeReg(dev, dev->bank0.commonRegs.EIE, 0xFF);
