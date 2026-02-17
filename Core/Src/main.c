@@ -32,7 +32,7 @@
 #include "lwip/apps/mqtt.h"
 #include "lwip/apps/mqtt_priv.h"
 #include "arch/sys_arch.h"
-
+#include "lwip/timeouts.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -217,6 +217,8 @@ int main(void)
 		  dns_tmr();
 	  }
 
+	  sys_check_timeouts();
+
 	  switch(myConn) {
 	  case START_UP:
 		  if(dhcp_supplied_address(&my_netif)) {
@@ -236,10 +238,12 @@ int main(void)
 	  case DHCP_IP_RECEIVED:
 
 		  break;
+	  case MQTT_DISCONNECTED:
 	  case DNS_IP_OBTAINED:
 
 		  if(ERR_OK == mqtt_client_connect(myMqtt, &mqttBroker.ip, 1883, myMqttClientCallBack, (void *) &myConn, &myInfo)) {
 			  myConn = MQTT_CONNECTING;
+			  bSubscribed = false;
 		  }
 		  break;
 	  case MQTT_CONNECTING:
@@ -261,8 +265,6 @@ int main(void)
 			  mqtt_subscribe(myMqtt, "$SYS/broker/uptime", 0, NULL, NULL);
 			  mqtt_subscribe(myMqtt, "franzkafka", 0, NULL, NULL);
 		  }
-		  break;
-	  case MQTT_DISCONNECTED:
 		  break;
 	  }
 
