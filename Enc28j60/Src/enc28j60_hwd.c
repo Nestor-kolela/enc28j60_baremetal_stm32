@@ -349,33 +349,6 @@ bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16
 
 bool enc28j60_etherReceive(enc28j60Drv * dev) {
 	bool bReturnValue = true;
-	//Write to the lock mechanism to prevent overwriting to the unread places
-	addrPtr currentAddr;
-	currentAddr.ptrLo = dev->rxPkt.ptrAddr.ptrLo;
-	currentAddr.ptrHi = dev->rxPkt.ptrAddr.ptrHi;
-
-	uint16_t u16CurrentAddr = currentAddr.ptrLo;
-	u16CurrentAddr |= (dev->rxPkt.ptrAddr.ptrHi << 8);
-
-	if(u16CurrentAddr % 2 == 0)
-	{
-		//This is an even number.
-		if(u16CurrentAddr == dev->rxBufStartAddr.u16Val)
-		{
-			currentAddr.ptrLo = (uint8_t) (dev->rxBufEndAddr.u16Val & 0x00FF);
-			currentAddr.ptrHi = (uint8_t) (dev->rxBufEndAddr.u16Val >> 0x08);
-		}else
-		{
-			u16CurrentAddr -= 1; //we subtract by one to get an even number
-			currentAddr.ptrLo = (uint8_t) (u16CurrentAddr & 0x00FF);
-			currentAddr.ptrHi = (uint8_t) (u16CurrentAddr >> 0x08);
-		}
-	}
-
-	//This is the address of the packet that we are currently processing.
-	enc28j60_writeReg(dev, dev->bank0.ERXRDPTL, currentAddr.ptrLo);
-	enc28j60_writeReg(dev, dev->bank0.ERXRDPTH, currentAddr.ptrHi);
-
 	//Start by writing to the Read address
 	enc28j60_writeReg(dev, dev->bank0.ERDPTL, (uint8_t) dev->rxPkt.ptrAddr.ptrLo);
 	enc28j60_writeReg(dev, dev->bank0.ERDPTH, (uint8_t) dev->rxPkt.ptrAddr.ptrHi);
@@ -404,13 +377,9 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 	//Start reading the actual data
 	//The next packet pointer is saved, then used in the next interrupt
 	(void) dev->spi.fncPtrRead(dev->rxPkt.nxtPktAddr, 2);
+
 	dev->rxPkt.ptrAddr.u16Ptr = *(dev->rxPkt.nxtPktAddr);
 	dev->rxPkt.ptrAddr.u16Ptr |= *(dev->rxPkt.nxtPktAddr + 1) << 8;
-
-	if(dev->rxPkt.ptrAddr.u16Ptr >= 8192) {
-		//dMesgPrint(DEBUG_ERROR, "Address can never be greater than 8192\r\n");
-		bReturnValue = false;
-	}
 
 	dMesgPrint(DEBUG_INFO, "Next Point address --> %d\r\n", ((dev->rxPkt.ptrAddr.ptrHi << 8) | dev->rxPkt.ptrAddr.ptrLo));
 
@@ -451,6 +420,17 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 
 	//We are done
 	dev->spi.fncPtrChipDS();
+
+	uint16_t u16ValueToLoad;
+	if(dev->rxPkt.ptrAddr.u16Ptr == dev->rxBufStartAddr.u16Val) {
+		u16ValueToLoad = dev->rxBufEndAddr.u16Val;
+	}else {
+		u16ValueToLoad = dev->rxPkt.ptrAddr.u16Ptr - 1;
+	}
+
+	//Write to the lock mechanism to prevent overwriting to the unread places
+	enc28j60_writeReg(dev, dev->bank0.ERXRDPTL, u16ValueToLoad & 0xFF);
+	enc28j60_writeReg(dev, dev->bank0.ERXRDPTH, u16ValueToLoad >> 0x08);
 
 	return bReturnValue;
 }

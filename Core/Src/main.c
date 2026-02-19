@@ -206,18 +206,18 @@ int main(void)
   while (1)
   {
 	  if(u32FinerTimer >= 1) {
-		  u32FinerTimer -= 1;
+		  u32FinerTimer = 0;
 		  dhcp_fine_tmr();
 		  HAL_GPIO_TogglePin(GreenLED1_GPIO_Port, GreenLED1_Pin);
 	  }
 
 	  if(u32CoarseTimer >= 120) {
-		  u32CoarseTimer -= 120;
+		  u32CoarseTimer = 0;
 		  dhcp_coarse_tmr();
 	  }
 
 	  if(timeForDns >= 2 && enableDns == true) {
-		  timeForDns -= 2;
+		  timeForDns = 0;
 		  dns_tmr();
 	  }
 
@@ -263,8 +263,8 @@ int main(void)
 		  break;
 
 	  case MQTT_CONNECTED:
-		  if(u32MqttCounter >= 30) {
-			  u32MqttCounter -= 30;
+		  if(u32MqttCounter >= 10) {
+			  u32MqttCounter = 0;
 			  const char* message = "This message is coming from an alien who just landed in south Africa";
 			  (void) mqtt_publish(myMqtt, "franzkafka", message, strlen(message), 0, 0, NULL, NULL);
 		  }
