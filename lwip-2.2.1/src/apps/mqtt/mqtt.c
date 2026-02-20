@@ -59,14 +59,13 @@
 #include "lwip/altcp_tls.h"
 #include <string.h>
 
-#define MQTT_DEBUG	1
 #if LWIP_TCP && LWIP_CALLBACK_API
 
 /**
  * MQTT_DEBUG: Default is off.
  */
 #if !defined MQTT_DEBUG || defined __DOXYGEN__
-#define MQTT_DEBUG                  LWIP_DBG_OFF
+#define MQTT_DEBUG                  LWIP_DBG_ON
 #endif
 
 #define MQTT_DEBUG_TRACE        (MQTT_DEBUG | LWIP_DBG_TRACE)

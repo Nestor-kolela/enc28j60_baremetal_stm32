@@ -57,7 +57,9 @@ struct mqttBrokerDetails {
 };
 
 struct mqttBrokerDetails mqttBroker = {
-		.name = "test.mosquitto.org",
+		//.name = "test.mosquitto.org",
+		//.name = "broker.hivemq.com",
+		.name = "broker.emqx.io",
 		.ip = {0},
 		.user = "",
 		.password = ""
@@ -95,6 +97,10 @@ static struct dhcp myDhcpClient;
 static enum Connection_State myConn = START_UP;
 static mqtt_client_t * myMqtt = NULL;
 static bool bSubscribed = false;
+static uint32_t rx_bytes = 0;
+static uint32_t lastReconnectAttempt = 0;
+static bool bTxBusy = false;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -111,6 +117,7 @@ void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p);
 static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg);
 static void myMqttClientCallBack(mqtt_client_t *client, void *arg, mqtt_connection_status_t status);
 static void publishIncoming(void *arg, const char *topic, u32_t tot_len);
+static void mqtt_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -188,11 +195,11 @@ int main(void)
 
       .keep_alive = 60,
 
-      .will_topic = "nestor/status",
+      .will_topic = NULL,
       .will_msg = "offline",
       .will_msg_len = 7,
       .will_qos = 0,
-      .will_retain = 1
+      .will_retain = 0
   };
 
   /* USER CODE END 2 */
@@ -202,18 +209,18 @@ int main(void)
   while (1)
   {
 	  if(u32FinerTimer >= 1) {
-		  u32FinerTimer -= 1;
+		  u32FinerTimer = 0;
 		  dhcp_fine_tmr();
 		  HAL_GPIO_TogglePin(GreenLED1_GPIO_Port, GreenLED1_Pin);
 	  }
 
 	  if(u32CoarseTimer >= 120) {
-		  u32CoarseTimer -= 120;
+		  u32CoarseTimer = 0;
 		  dhcp_coarse_tmr();
 	  }
 
 	  if(timeForDns >= 2 && enableDns == true) {
-		  timeForDns -= 2;
+		  timeForDns = 0;
 		  dns_tmr();
 	  }
 
@@ -240,11 +247,17 @@ int main(void)
 		  break;
 	  case MQTT_DISCONNECTED:
 	  case DNS_IP_OBTAINED:
-
-		  if(ERR_OK == mqtt_client_connect(myMqtt, &mqttBroker.ip, 1883, myMqttClientCallBack, (void *) &myConn, &myInfo)) {
-			  myConn = MQTT_CONNECTING;
-			  bSubscribed = false;
-		  }
+		    if(sys_now() - lastReconnectAttempt > 3000) {
+		        lastReconnectAttempt = sys_now();
+		        if(ERR_OK == mqtt_client_connect(myMqtt, &mqttBroker.ip, 1883,
+		                                         myMqttClientCallBack,
+		                                         (void *) &myConn,
+		                                         &myInfo))
+		        {
+		            myConn = MQTT_CONNECTING;
+		            bSubscribed = false;
+		        }
+		    }
 		  break;
 	  case MQTT_CONNECTING:
 		  if(mqtt_client_is_connected(myMqtt) == 1) {
@@ -253,16 +266,16 @@ int main(void)
 		  break;
 
 	  case MQTT_CONNECTED:
-		  if(u32MqttCounter >= 30) {
-			  u32MqttCounter -= 30;
+		  if(u32MqttCounter >= 10) {
+			  u32MqttCounter = 0;
 			  const char* message = "This message is coming from an alien who just landed in south Africa";
 			  (void) mqtt_publish(myMqtt, "franzkafka", message, strlen(message), 0, 0, NULL, NULL);
 		  }
 
 		  if(bSubscribed == false) {
 			  bSubscribed = true;
-			  mqtt_set_inpub_callback(myMqtt, publishIncoming, NULL, NULL);
-			  mqtt_subscribe(myMqtt, "$SYS/broker/uptime", 0, NULL, NULL);
+			  mqtt_set_inpub_callback(myMqtt, publishIncoming, mqtt_data_cb, NULL);
+			  //mqtt_subscribe(myMqtt, "$SYS/broker/uptime", 0, NULL, NULL);
 			  mqtt_subscribe(myMqtt, "franzkafka", 0, NULL, NULL);
 		  }
 		  break;
@@ -302,6 +315,7 @@ int main(void)
 				case 3:
 					dMesgPrint(DEBUG_INFO, "4) Transmit Interrupt Flag bit\r\n");
 					enc28j60_clear_interrupt(&dev, TXIF);
+					bTxBusy = false;
 					break;
 
 				case 4:
@@ -343,12 +357,13 @@ int main(void)
 					break;
 				}
 
-				//Clear the interrupt bit.
+				//Clear the global interrupt bit.
 				enc28j60_global_Int_Set(&dev);
 
 				}
 			}
 	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -626,14 +641,37 @@ err_t ethernet_init(struct netif *netif) {
 }
 
 err_t enc28j60_translate(struct netif *netif, struct pbuf *p) {
-	uint16_t length = p->len;
-	memcpy(dev.txPkt.data, (uint8_t *) p->payload, length);
-	enc28j60_etherTransmit(&dev, dev.txPkt.data, length);
-	return ERR_OK;
+	if(bTxBusy != true) {
+		dMesgPrint(DEBUG_INFO, "TX started!\r\n");
+		struct pbuf *q;
+	    uint16_t total_len = p->tot_len;
+	    uint16_t offset = 0;
+
+	    /* Copy the full chained pbuf into linear ENC buffer */
+	    for (q = p; q != NULL; q = q->next)
+	    {
+	        memcpy(&dev.txPkt.data[offset], q->payload, q->len);
+	        offset += q->len;
+	    }
+
+	    /* Safety: offset must equal total length */
+	    if (offset != total_len) {
+	        return ERR_BUF;
+	    }
+
+	    (void) enc28j60_etherTransmit(&dev, dev.txPkt.data, total_len);
+
+	    bTxBusy = true;
+	    return ERR_OK;
+	}else {
+		dMesgPrint(DEBUG_ERROR, "TX busy!\r\n");
+		return ERR_INPROGRESS;
+	}
 }
 
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p) {
 	uint16_t len = dev->rxPkt.rxPktLen.u16PktLen;
+    if (len > p->tot_len) len = p->tot_len;
 	pbuf_take(p, dev->rxPkt.data, len);
 }
 
@@ -659,6 +697,17 @@ static void myMqttClientCallBack(mqtt_client_t *client, void *arg, mqtt_connecti
 			break;
 		}
 	}
+}
+
+static void mqtt_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
+{
+    rx_bytes += len;
+
+    if(flags & MQTT_DATA_FLAG_LAST)
+    {
+        dMesgPrint(DEBUG_INFO, "MQTT message complete: %lu bytes\r\n", rx_bytes);
+        rx_bytes = 0;
+    }
 }
 
 static void publishIncoming(void *arg, const char *topic, u32_t tot_len) {

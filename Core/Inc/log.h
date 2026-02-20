@@ -19,7 +19,13 @@
 #define DEBUG_VERBOSE 4
 
 
-void dMesgPrint(uint8_t debugLevel, const char *format, ...);
-void dMesgPrintLwIp(const char *__restrict x, ...);
+void dMesgPrint_impl(uint8_t level, const char *file, int line, const char *func, const char *format, ...);
+void dMesgPrintLwIp_impl(const char *file, int line, const char *func, const char *format, ...);
+
+#define dMesgPrint(level, fmt, ...) \
+    dMesgPrint_impl(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+
+#define dMesgPrintLwIp(fmt, ...) \
+    dMesgPrintLwIp_impl(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #endif /* INC_LOG_H_ */
