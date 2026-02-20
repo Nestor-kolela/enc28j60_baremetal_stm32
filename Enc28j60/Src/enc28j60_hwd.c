@@ -36,12 +36,11 @@ static void enc2860_macInit(enc28j60Drv * dev) {
 	enc28j60_writeReg(dev, dev->bank2.MACLCON2, u8TempValueHolder);
 
 	u8TempValueHolder = enc28j60_readMacMIIReg(dev, dev->bank2.MACON1);
-
 	u8TempValueHolder |= ((1 << 3) | (1 << 2) | 0x01);
 	enc28j60_writeReg(dev, dev->bank2.MACON1, u8TempValueHolder);
 
 	u8TempValueHolder = enc28j60_readMacMIIReg(dev, dev->bank2.MACON3);
-	u8TempValueHolder |= ((7 << 5) | (1 << 4) | 0x01);
+	u8TempValueHolder |= ((7 << 5) | (1 << 4) | (1 << 2) | 0x01);
 	enc28j60_writeReg(dev, dev->bank2.MACON3, u8TempValueHolder);
 
 	enc28j60_writeReg(dev, dev->bank2.MAMXFLL, dev->MxmPkSize.u8ValLo);
@@ -299,12 +298,12 @@ void enc28j60_sftRst(enc28j60Drv * dev) {
 
 bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16_t length) {
 	//1) Start by writing to the initial address.
-	enc28j60_writeReg(dev, dev->bank0.EWRPTH, (uint8_t)((dev->txBufStartAddr.u16Val & 0xFF00) >> 0x08));
-	enc28j60_writeReg(dev, dev->bank0.EWRPTL, (uint8_t)(dev->txBufStartAddr.u16Val & 0x00FF));
+	enc28j60_writeReg(dev, dev->bank0.EWRPTL, dev->txBufStartAddr.u16Val & 0xFF);
+	enc28j60_writeReg(dev, dev->bank0.EWRPTH, dev->txBufStartAddr.u16Val >> 0x08);
 
 	//1) Start by writing to the initial address.
-	enc28j60_writeReg(dev, dev->bank0.ETXSTH, (uint8_t)((dev->txBufStartAddr.u16Val & 0xFF00) >> 0x08));
-	enc28j60_writeReg(dev, dev->bank0.ETXSTL, (uint8_t)(dev->txBufStartAddr.u16Val & 0x00FF));
+	enc28j60_writeReg(dev, dev->bank0.ETXSTL, dev->txBufStartAddr.u16Val & 0xFF);
+	enc28j60_writeReg(dev, dev->bank0.ETXSTH, dev->txBufStartAddr.u16Val >> 0x08);
 
 	//Start loading the data into the buffer.
 	dev->spi.fncPtrCS();
@@ -315,16 +314,18 @@ bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16
 	dev->spi.fncPtrWrite(&u8Command, 1);
 
 	//Add the offset as well.
-	dev->txPkt.txPktLen.u16PktLen = dev->txBufStartAddr.u16Val + length;
+	dev->txPkt.txPktLen.u16PktLen = dev->txBufStartAddr.u16Val + length; //plus for for control byte
 
-	uint8_t u8ControlByte = 0x00;
+	uint8_t u8ControlByte = 0x00;//0x00;
 	dev->spi.fncPtrWrite(&u8ControlByte, 1);
 
 	dev->spi.fncPtrWrite(u8PtrData, length);
 
+	dev->spi.fncPtrChipDS();
+
 	// Then program the EXTND pointer
-	enc28j60_writeReg(dev, dev->bank0.ETXNDH, (uint8_t)((dev->txPkt.txPktLen.u16PktLen & 0xFF00) >> 0x08));
-	enc28j60_writeReg(dev, dev->bank0.ETXNDL, (uint8_t)(dev->txPkt.txPktLen.u16PktLen & 0x00FF));
+	enc28j60_writeReg(dev, dev->bank0.ETXNDL, dev->txPkt.txPktLen.u16PktLen & 0xFF);
+	enc28j60_writeReg(dev, dev->bank0.ETXNDH, dev->txPkt.txPktLen.u16PktLen >> 0x08);
 
 	// Clear EIR.TXIF
 	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIR, 1 << 3);
@@ -341,8 +342,6 @@ bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16
 
 	// Start Transmission by setting TXRST found in ECON1.
 	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON1, 1 << 3);
-
-	dev->spi.fncPtrChipDS();
 
 	return true;
 }
@@ -393,17 +392,6 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 	uint16_t u16Flags = *(dev->rxPkt.rxStatVect + 2);
 	u16Flags |= *(dev->rxPkt.rxStatVect + 3) << 8;
 
-	if(dev->rxPkt.rxPktLen.u16PktLen == 0) {
-		for(uint8_t i = 0; i < 4; i++)
-		{
-			dMesgPrint(DEBUG_ERROR, "Status vector registers %d: %d\r\n", i, *(dev->rxPkt.rxStatVect + i));
-		}
-
-		dMesgPrint(DEBUG_ERROR, "The packet length can never be 0\r\n");
-		bReturnValue = false;
-	}
-	dev->rxPkt.rxPktLen.u16PktLen -= 4;
-
 	if(dev->rxPkt.rxPktLen.u16PktLen >= 1518) {
 		//The length can never be 65535, right?
 		for(uint8_t i = 0; i < 4; i++)
@@ -421,6 +409,8 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 	//We are done
 	dev->spi.fncPtrChipDS();
 
+	//Do the background work requred in Errata Datasheets.
+	//Document DS80349C
 	uint16_t u16ValueToLoad;
 	if(dev->rxPkt.ptrAddr.u16Ptr == dev->rxBufStartAddr.u16Val) {
 		u16ValueToLoad = dev->rxBufEndAddr.u16Val;
@@ -431,6 +421,53 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 	//Write to the lock mechanism to prevent overwriting to the unread places
 	enc28j60_writeReg(dev, dev->bank0.ERXRDPTL, u16ValueToLoad & 0xFF);
 	enc28j60_writeReg(dev, dev->bank0.ERXRDPTH, u16ValueToLoad >> 0x08);
+
+	for(uint32_t i = 0; i < 16; i++) {
+		if(u16Flags & (1 << i)) {
+			switch(i) {
+			default:
+				break;
+			case 1:
+				dMesgPrint(DEBUG_ERROR, "Long/Drop Event\r\n");
+				break;
+			case 2:
+				dMesgPrint(DEBUG_ERROR, "Carrier seen!\r\n");
+				break;
+			case 4:
+				dMesgPrint(DEBUG_ERROR, "CRC Err!\r\n");
+				break;
+			case 5:
+				dMesgPrint(DEBUG_ERROR, "Length Chk Err!\r\n");
+				break;
+			case 6:
+				dMesgPrint(DEBUG_ERROR, "Length range!\r\n");
+				break;
+			case 7:
+				dMesgPrint(DEBUG_INFO, "Rcv OK!\r\n");
+				break;
+			case 8:
+				dMesgPrint(DEBUG_INFO, "Rcv Multicast\r\n");
+				break;
+			case 9:
+				dMesgPrint(DEBUG_INFO, "Rcv Broadcast\r\n");
+				break;
+			case 10:
+				dMesgPrint(DEBUG_INFO, "Dribble Nibble\r\n");
+				break;
+			case 11:
+				dMesgPrint(DEBUG_INFO, "Rcv CTL\r\n");
+				break;
+			case 12:
+				dMesgPrint(DEBUG_INFO, "Rcv Pause CTL\r\n");
+				break;
+			case 13:
+				dMesgPrint(DEBUG_ERROR, "Rcd unkwn opcode\r\n");
+			case 14:
+				dMesgPrint(DEBUG_INFO, "VLAN!\r\n");
+				break;
+			}
+		}
+	}
 
 	return bReturnValue;
 }

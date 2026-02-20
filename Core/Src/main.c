@@ -57,7 +57,9 @@ struct mqttBrokerDetails {
 };
 
 struct mqttBrokerDetails mqttBroker = {
-		.name = "test.mosquitto.org",
+		//.name = "test.mosquitto.org",
+		//.name = "broker.hivemq.com",
+		.name = "broker.emqx.io",
 		.ip = {0},
 		.user = "",
 		.password = ""
@@ -97,6 +99,7 @@ static mqtt_client_t * myMqtt = NULL;
 static bool bSubscribed = false;
 static uint32_t rx_bytes = 0;
 static uint32_t lastReconnectAttempt = 0;
+static bool bTxBusy = false;
 
 /* USER CODE END PV */
 
@@ -192,11 +195,11 @@ int main(void)
 
       .keep_alive = 60,
 
-      .will_topic = "nestor/status",
+      .will_topic = NULL,
       .will_msg = "offline",
       .will_msg_len = 7,
       .will_qos = 0,
-      .will_retain = 1
+      .will_retain = 0
   };
 
   /* USER CODE END 2 */
@@ -272,7 +275,7 @@ int main(void)
 		  if(bSubscribed == false) {
 			  bSubscribed = true;
 			  mqtt_set_inpub_callback(myMqtt, publishIncoming, mqtt_data_cb, NULL);
-			  mqtt_subscribe(myMqtt, "$SYS/broker/uptime", 0, NULL, NULL);
+			  //mqtt_subscribe(myMqtt, "$SYS/broker/uptime", 0, NULL, NULL);
 			  mqtt_subscribe(myMqtt, "franzkafka", 0, NULL, NULL);
 		  }
 		  break;
@@ -312,6 +315,7 @@ int main(void)
 				case 3:
 					dMesgPrint(DEBUG_INFO, "4) Transmit Interrupt Flag bit\r\n");
 					enc28j60_clear_interrupt(&dev, TXIF);
+					bTxBusy = false;
 					break;
 
 				case 4:
@@ -353,7 +357,7 @@ int main(void)
 					break;
 				}
 
-				//Clear the interrupt bit.
+				//Clear the global interrupt bit.
 				enc28j60_global_Int_Set(&dev);
 
 				}
@@ -637,26 +641,32 @@ err_t ethernet_init(struct netif *netif) {
 }
 
 err_t enc28j60_translate(struct netif *netif, struct pbuf *p) {
-    struct pbuf *q;
-    uint16_t total_len = p->tot_len;
-    uint16_t offset = 0;
+	if(bTxBusy != true) {
+		dMesgPrint(DEBUG_INFO, "TX started!\r\n");
+		struct pbuf *q;
+	    uint16_t total_len = p->tot_len;
+	    uint16_t offset = 0;
 
-    /* Copy the full chained pbuf into linear ENC buffer */
-    for (q = p; q != NULL; q = q->next)
-    {
-        memcpy(&dev.txPkt.data[offset], q->payload, q->len);
-        offset += q->len;
-    }
+	    /* Copy the full chained pbuf into linear ENC buffer */
+	    for (q = p; q != NULL; q = q->next)
+	    {
+	        memcpy(&dev.txPkt.data[offset], q->payload, q->len);
+	        offset += q->len;
+	    }
 
-    /* Safety: offset must equal total length */
-    if (offset != total_len) {
-        return ERR_BUF;
-    }
+	    /* Safety: offset must equal total length */
+	    if (offset != total_len) {
+	        return ERR_BUF;
+	    }
 
-    enc28j60_etherTransmit(&dev, dev.txPkt.data, total_len);
+	    (void) enc28j60_etherTransmit(&dev, dev.txPkt.data, total_len);
 
-    return ERR_OK;
-	//return ERR_OK;
+	    bTxBusy = true;
+	    return ERR_OK;
+	}else {
+		dMesgPrint(DEBUG_ERROR, "TX busy!\r\n");
+		return ERR_INPROGRESS;
+	}
 }
 
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p) {
