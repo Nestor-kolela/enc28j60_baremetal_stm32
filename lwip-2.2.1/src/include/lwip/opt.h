@@ -3532,7 +3532,7 @@
  * UDP_DEBUG: Enable debugging in UDP.
  */
 #if !defined UDP_DEBUG || defined __DOXYGEN__
-#define UDP_DEBUG                       LWIP_DBG_OFF
+#define UDP_DEBUG                       LWIP_DBG_ON
 #endif
 
 /**
