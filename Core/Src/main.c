@@ -29,7 +29,8 @@
 #include "lwip/dhcp.h"
 #include "lwip/dns.h"
 #include "lwip/etharp.h"
-
+#include "lwip/timeouts.h"
+#include "arch/sys_arch.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -64,9 +65,11 @@ static volatile uint32_t enc28j60intCounter;
 static volatile uint32_t u32FinerTimer;
 static volatile uint32_t u32CoarseTimer;
 static volatile uint8_t timeForDns;
+static volatile uint8_t timerForEtharp;
 static volatile bool dnsRequest;
 static struct netif my_netif;
 static struct dhcp myDhcpClient;
+static bool bTxBusy;
 
 struct mqttBrokerDetails {
 	const char * name;
@@ -77,7 +80,7 @@ struct mqttBrokerDetails {
 
 struct mqttBrokerDetails mqttBroker = {
 		.name = "test.mosquitto.org",
-		.ip = 0,
+		.ip = {0},
 		.user = "",
 		.password = ""
 };
@@ -181,20 +184,28 @@ int main(void)
   while (1)
   {
 	  if(u32FinerTimer >= 1) {
-		  u32FinerTimer -= 1;
+		  u32FinerTimer = 0;
 		  dhcp_fine_tmr();
 		  HAL_GPIO_TogglePin(GreenLED1_GPIO_Port, GreenLED1_Pin);
 	  }
 
 	  if(u32CoarseTimer >= 120) {
-		  u32CoarseTimer -= 120;
+		  u32CoarseTimer = 0;
 		  dhcp_coarse_tmr();
 	  }
 
 	  if(timeForDns >= 2) {
-		  timeForDns -= 2;
+		  timeForDns = 0;
 		  dns_tmr();
 	  }
+
+	  if(timerForEtharp >= 2) {
+		  timerForEtharp = 0;
+		  etharp_tmr();
+	  }
+
+	  sys_check_timeouts();
+
 
 	  if(enc28j60intCounter > 0)
 	  {
@@ -235,6 +246,7 @@ int main(void)
 					case 3:
 						dMesgPrint(DEBUG_INFO, "4) Transmit Interrupt Flag bit\r\n");
 						enc28j60_BitFieldClear(&dev, dev.bank0.commonRegs.EIR, 1 << cnt);
+						bTxBusy = false;
 						break;
 
 					case 4:
@@ -264,7 +276,7 @@ int main(void)
 
 								//Let do the translation from array to pbuf
 								uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
-								struct pbuf * ethBuffer = pbuf_alloc(PBUF_LINK, u18length, PBUF_REF);
+								struct pbuf * ethBuffer = pbuf_alloc(PBUF_RAW, u18length, PBUF_POOL);
 								if(ethBuffer != NULL)
 								{
 									ethernet_do_translation_to_pbub(&dev, ethBuffer);
@@ -534,6 +546,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	  u32FinerTimer++;
 	  u32CoarseTimer++;
 	  timeForDns++;
+	  timerForEtharp++;
+	  sys_now_increment();
   }
 
   /* USER CODE END Callback 1 */
@@ -558,25 +572,40 @@ err_t ethernet_init(struct netif *netif)
 	return ERR_OK;
 }
 
-static uint8_t enc28j60_buffer[1500];
-err_t enc28j60_translate(struct netif *netif, struct pbuf *p)
-{
-	//This function should transmit
-	uint16_t length = p->len;
-	memcpy(enc28j60_buffer, (uint8_t *) p->payload, length);
-	enc28j60_etherTransmit(&dev, enc28j60_buffer, length);
-	return ERR_OK;
+err_t enc28j60_translate(struct netif *netif, struct pbuf *p) {
+	if(bTxBusy != true) {
+		dMesgPrint(DEBUG_INFO, "TX started!\r\n");
+		struct pbuf *q;
+	    uint16_t total_len = p->tot_len;
+	    uint16_t offset = 0;
+
+	    /* Copy the full chained pbuf into linear ENC buffer */
+	    for (q = p; q != NULL; q = q->next)
+	    {
+	        memcpy(&dev.txPkt.data[offset], q->payload, q->len);
+	        offset += q->len;
+	    }
+
+	    /* Safety: offset must equal total length */
+	    if (offset != total_len) {
+	        return ERR_BUF;
+	    }
+
+	    (void) enc28j60_etherTransmit(&dev, dev.txPkt.data, total_len);
+
+	    bTxBusy = true;
+	    return ERR_OK;
+	}else {
+		dMesgPrint(DEBUG_ERROR, "TX busy!\r\n");
+		return ERR_INPROGRESS;
+	}
 }
 
-void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p)
-{
-	p->next = NULL;
-	p->len = dev->rxPkt.rxPktLen.u16PktLen;
-	p->payload = dev->rxPkt.data;
-	memcpy((uint8_t *) p->payload, dev->rxPkt.data, dev->rxPkt.rxPktLen.u16PktLen);
-	p->ref = 1;
+void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p) {
+	uint16_t len = dev->rxPkt.rxPktLen.u16PktLen;
+    if (len > p->tot_len) len = p->tot_len;
+	pbuf_take(p, dev->rxPkt.data, len);
 }
-
 
 static void ipObtained(const char *name, const ip_addr_t *ipaddr, void *callback_arg) {
 	if(strcmp(mqttBroker.name, name) == 0) {
