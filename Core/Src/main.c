@@ -90,6 +90,7 @@ static volatile uint32_t enc28j60intCounter;
 static volatile uint32_t u32FinerTimer;
 static volatile uint32_t u32CoarseTimer;
 static volatile uint8_t timeForDns;
+static volatile uint8_t timerForEtharp;
 static volatile uint32_t u32MqttCounter;
 static volatile bool dnsRequest;
 static struct netif my_netif;
@@ -178,7 +179,6 @@ int main(void)
 
   uint32_t u32PacketCounter = 0;
 
-
   dhcp_set_struct(&my_netif, &myDhcpClient);
   dhcp_start(&my_netif);
 
@@ -223,6 +223,12 @@ int main(void)
 		  timeForDns = 0;
 		  dns_tmr();
 	  }
+
+	  if(timerForEtharp >= 2) {
+		  timerForEtharp = 0;
+		  etharp_tmr();
+	  }
+
 
 	  sys_check_timeouts();
 
@@ -616,6 +622,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	  u32CoarseTimer++;
 	  timeForDns++;
 	  u32MqttCounter++;
+	  timerForEtharp++;
 	  sys_now_increment();
   }
 
