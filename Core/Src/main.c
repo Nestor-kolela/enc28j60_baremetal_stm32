@@ -229,7 +229,6 @@ int main(void)
 		  etharp_tmr();
 	  }
 
-
 	  sys_check_timeouts();
 
 	  switch(myConn) {
@@ -252,6 +251,10 @@ int main(void)
 
 		  break;
 	  case MQTT_DISCONNECTED:
+	  {
+		  dMesgPrint(DEBUG_ERROR, "MQTT Disconnect Error\r\n");
+		  myConn = DNS_IP_OBTAINED;
+	  }break;
 	  case DNS_IP_OBTAINED:
 		    if(sys_now() - lastReconnectAttempt > 3000) {
 		        lastReconnectAttempt = sys_now();
