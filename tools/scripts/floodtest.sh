@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-BROKER="${1:-54.36.178.49}"
+BROKER="${1:-broker.emqx.io}"
 TOPIC="${2:-franzkafka}"
 PERIOD_MS="${3:-200}"
 
@@ -20,7 +20,7 @@ make_message() {
 }
 
 COUNT=0
-echo "Starting paced publisher (${PERIOD_MS}ms)..."
+echo "Starting paced publisher (${PERIOD_MS}ms) to $BROKER..."
 
 while true; do
     MSG=$(make_message)
@@ -30,4 +30,3 @@ while true; do
     COUNT=$((COUNT+1))
     sleep $(awk "BEGIN {print $PERIOD_MS/1000}")
 done
-
