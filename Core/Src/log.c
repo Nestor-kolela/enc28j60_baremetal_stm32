@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 #include "main.h"
 
@@ -18,18 +19,22 @@ extern UART_HandleTypeDef huart2;
 
 /* ================== CONFIG ================== */
 
-#define LOG_TMP_BUF_SIZE   1024
+#define LOG_TMP_BUF_SIZE   2048
 #define UART_TX_BUF_SIZE   2048
 
 /* ================== BUFFERS ================== */
 
 static uint8_t uart_tx_buf[UART_TX_BUF_SIZE];
-static volatile uint16_t tx_head = 0;
-static volatile uint16_t tx_tail = 0;
-static volatile uint8_t dma_busy = 0;
-static uint16_t dma_len = 0;
 
-/* temp buffers (reduced size) */
+static volatile uint16_t tx_head;
+static volatile uint16_t tx_tail;
+static volatile uint8_t dma_busy;
+static volatile uint16_t dma_len;
+
+/* Debug / diagnostics */
+volatile uint32_t uart_dropped;
+
+/* temp buffers (static = DMA safe, no stack pressure) */
 static char buffer[LOG_TMP_BUF_SIZE];
 static char final_buffer[LOG_TMP_BUF_SIZE];
 
@@ -54,23 +59,22 @@ static void uart_start_dma(void)
     if (huart2.gState != HAL_UART_STATE_READY)
         return;
 
-    dma_busy = 1;
+    uint16_t len;
 
     if (tx_head > tx_tail)
-    {
-        dma_len = tx_head - tx_tail;
-    }
+        len = tx_head - tx_tail;
     else
-    {
-        dma_len = UART_TX_BUF_SIZE - tx_tail;
-    }
+        len = UART_TX_BUF_SIZE - tx_tail;
 
-    HAL_StatusTypeDef st =
-        HAL_UART_Transmit_DMA(&huart2, &uart_tx_buf[tx_tail], dma_len);
+    if (len == 0 || len > UART_TX_BUF_SIZE)
+        return;
 
-    if (st != HAL_OK)
+    dma_busy = 1;
+    dma_len = len;
+
+    if (HAL_UART_Transmit_DMA(&huart2, &uart_tx_buf[tx_tail], len) != HAL_OK)
     {
-        dma_busy = 0; // recover if failed
+        dma_busy = 0;
     }
 }
 
@@ -78,17 +82,26 @@ static void uart_write_dma(uint8_t *data, uint16_t len)
 {
     for (uint16_t i = 0; i < len; i++)
     {
+        __disable_irq();
+
         uint16_t next = (tx_head + 1) % UART_TX_BUF_SIZE;
 
-        // Drop if full (non-blocking design)
         if (next == tx_tail)
+        {
+            uart_dropped++;
+            __enable_irq();
             break;
+        }
 
         uart_tx_buf[tx_head] = data[i];
         tx_head = next;
+
+        __enable_irq();
     }
 
+    __disable_irq();
     uart_start_dma();
+    __enable_irq();
 }
 
 /* ================== CALLBACK ================== */
@@ -99,6 +112,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     {
         tx_tail = (tx_tail + dma_len) % UART_TX_BUF_SIZE;
         dma_busy = 0;
+
         uart_start_dma();
     }
 }
@@ -126,21 +140,27 @@ void dMesgPrint_impl(uint8_t debugLevel,
     int len = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    if (len <= 0) return;
+    if (len < 0) return;
+
+    if (len >= sizeof(buffer))
+        len = sizeof(buffer) - 1;
 
     int final_len = snprintf(final_buffer, sizeof(final_buffer),
             "%s[%s:%d:%s] %s%s",
             color_code, file, line, func, buffer, COLOR_RESET);
 
-    if (final_len <= 0) return;
+    if (final_len < 0) return;
 
-    if (final_len > sizeof(final_buffer))
-        final_len = sizeof(final_buffer);
+    if (final_len >= sizeof(final_buffer))
+        final_len = sizeof(final_buffer) - 1;
 
-    uart_write_dma((uint8_t *)final_buffer, final_len);
+    uart_write_dma((uint8_t *)final_buffer, (uint16_t)final_len);
 }
 
-void dMesgPrintLwIp_impl(const char *file, int line, const char *func, const char *format, ...)
+void dMesgPrintLwIp_impl(const char *file,
+                         int line,
+                         const char *func,
+                         const char *format, ...)
 {
     const char * color_code = COLOR_MAGENTA;
 
@@ -149,16 +169,19 @@ void dMesgPrintLwIp_impl(const char *file, int line, const char *func, const cha
     int len = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    if (len <= 0) return;
+    if (len < 0) return;
+
+    if (len >= sizeof(buffer))
+        len = sizeof(buffer) - 1;
 
     int final_len = snprintf(final_buffer, sizeof(final_buffer),
             "%s[LWIP %s:%d:%s] %s%s",
             color_code, file, line, func, buffer, COLOR_RESET);
 
-    if (final_len <= 0) return;
+    if (final_len < 0) return;
 
-    if (final_len > sizeof(final_buffer))
-        final_len = sizeof(final_buffer);
+    if (final_len >= sizeof(final_buffer))
+        final_len = sizeof(final_buffer) - 1;
 
-    uart_write_dma((uint8_t *)final_buffer, final_len);
+    uart_write_dma((uint8_t *)final_buffer, (uint16_t)final_len);
 }
