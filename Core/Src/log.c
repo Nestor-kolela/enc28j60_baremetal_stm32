@@ -18,7 +18,8 @@ extern UART_HandleTypeDef huart2;
 
 /* ================== CONFIG ================== */
 
-#define UART_TX_BUF_SIZE 4096
+#define LOG_TMP_BUF_SIZE   1024
+#define UART_TX_BUF_SIZE   2048
 
 /* ================== BUFFERS ================== */
 
@@ -28,9 +29,9 @@ static volatile uint16_t tx_tail = 0;
 static volatile uint8_t dma_busy = 0;
 static uint16_t dma_len = 0;
 
-/* temp format buffers (same as yours) */
-static char buffer[2048];
-static char final_buffer[2048];
+/* temp buffers (reduced size) */
+static char buffer[LOG_TMP_BUF_SIZE];
+static char final_buffer[LOG_TMP_BUF_SIZE];
 
 /* ================== COLORS ================== */
 
@@ -50,6 +51,9 @@ static void uart_start_dma(void)
     if (dma_busy) return;
     if (tx_head == tx_tail) return;
 
+    if (huart2.gState != HAL_UART_STATE_READY)
+        return;
+
     dma_busy = 1;
 
     if (tx_head > tx_tail)
@@ -61,7 +65,13 @@ static void uart_start_dma(void)
         dma_len = UART_TX_BUF_SIZE - tx_tail;
     }
 
-    HAL_UART_Transmit_DMA(&huart2, &uart_tx_buf[tx_tail], dma_len);
+    HAL_StatusTypeDef st =
+        HAL_UART_Transmit_DMA(&huart2, &uart_tx_buf[tx_tail], dma_len);
+
+    if (st != HAL_OK)
+    {
+        dma_busy = 0; // recover if failed
+    }
 }
 
 static void uart_write_dma(uint8_t *data, uint16_t len)
@@ -70,7 +80,7 @@ static void uart_write_dma(uint8_t *data, uint16_t len)
     {
         uint16_t next = (tx_head + 1) % UART_TX_BUF_SIZE;
 
-        // Buffer full → drop data (non-blocking)
+        // Drop if full (non-blocking design)
         if (next == tx_tail)
             break;
 
@@ -95,7 +105,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 /* ================== LOG FUNCTIONS ================== */
 
-void dMesgPrint_impl(uint8_t debugLevel, const char *file, int line, const char *func, const char *format, ...)
+void dMesgPrint_impl(uint8_t debugLevel,
+                     const char *file,
+                     int line,
+                     const char *func,
+                     const char *format, ...)
 {
     const char * color_code = COLOR_WHITE;
 
@@ -112,16 +126,18 @@ void dMesgPrint_impl(uint8_t debugLevel, const char *file, int line, const char 
     int len = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    if (len > 0 && len < sizeof(buffer)) {
+    if (len <= 0) return;
 
-        int final_len = snprintf(final_buffer, sizeof(final_buffer),
-                "%s[%s:%d:%s] %s%s",
-                color_code, file, line, func, buffer, COLOR_RESET);
+    int final_len = snprintf(final_buffer, sizeof(final_buffer),
+            "%s[%s:%d:%s] %s%s",
+            color_code, file, line, func, buffer, COLOR_RESET);
 
-        if (final_len > 0 && final_len < sizeof(final_buffer)) {
-            uart_write_dma((uint8_t *)final_buffer, final_len);
-        }
-    }
+    if (final_len <= 0) return;
+
+    if (final_len > sizeof(final_buffer))
+        final_len = sizeof(final_buffer);
+
+    uart_write_dma((uint8_t *)final_buffer, final_len);
 }
 
 void dMesgPrintLwIp_impl(const char *file, int line, const char *func, const char *format, ...)
@@ -133,14 +149,16 @@ void dMesgPrintLwIp_impl(const char *file, int line, const char *func, const cha
     int len = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    if (len > 0 && len < sizeof(buffer)) {
+    if (len <= 0) return;
 
-        int final_len = snprintf(final_buffer, sizeof(final_buffer),
-                "%s[LWIP %s:%d:%s] %s%s",
-                color_code, file, line, func, buffer, COLOR_RESET);
+    int final_len = snprintf(final_buffer, sizeof(final_buffer),
+            "%s[LWIP %s:%d:%s] %s%s",
+            color_code, file, line, func, buffer, COLOR_RESET);
 
-        if (final_len > 0 && final_len < sizeof(final_buffer)) {
-            uart_write_dma((uint8_t *)final_buffer, final_len);
-        }
-    }
+    if (final_len <= 0) return;
+
+    if (final_len > sizeof(final_buffer))
+        final_len = sizeof(final_buffer);
+
+    uart_write_dma((uint8_t *)final_buffer, final_len);
 }
