@@ -333,7 +333,7 @@ typedef struct __attribute__((packed)) _enc28j60_rx_packet
 	pktLength rxPktLen;
 
 	//Data and all possible padding
-	uint8_t	data[1500];
+	uint8_t	data[1024];
 
 	//Pointer Keeper
 	addrPtr ptrAddr;
@@ -346,7 +346,7 @@ typedef struct __attribute__((packed)) _enc28j60_tx_packet
 	pktLength txPktLen;
 
 	//Data buffer
-	uint8_t	data[1500];
+	uint8_t	data[512];
 }enc28j60_tx_packet;
 
 typedef struct _enc28j60_driver

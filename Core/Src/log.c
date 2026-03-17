@@ -19,8 +19,8 @@ extern UART_HandleTypeDef huart2;
 
 /* ================== CONFIG ================== */
 
-#define LOG_TMP_BUF_SIZE   2048
-#define UART_TX_BUF_SIZE   2048
+#define LOG_TMP_BUF_SIZE   1024
+#define UART_TX_BUF_SIZE   1024
 
 /* ================== BUFFERS ================== */
 
