@@ -5,7 +5,8 @@
  *      Author: NK KALAMBAY
  */
 
-#include "spiHwdInterface.h"
+#include "../../enc28j60_driver/Inc/spiHwdInterface.h"
+
 #include "main.h"
 
 extern SPI_HandleTypeDef hspi1;

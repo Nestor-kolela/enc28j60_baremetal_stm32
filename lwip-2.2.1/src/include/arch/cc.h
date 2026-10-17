@@ -34,23 +34,9 @@
 
 #include "cpu.h"
 
-typedef unsigned   char    u8_t;
-typedef signed     char    s8_t;
-typedef unsigned   short   u16_t;
-typedef signed     short   s16_t;
-typedef unsigned   long    u32_t;
-typedef signed     long    s32_t;
-//typedef u32_t mem_ptr_t;
+/* u8_t..s32_t and the U32_F-style format macros come from lwip/arch.h
+ * (stdint.h / inttypes.h). Redefining them here clashes with lwIP 2.x. */
 typedef int sys_prot_t;
-
-
-#define U16_F "hu"
-#define S16_F "d"
-#define X16_F "hx"
-#define U32_F "u"
-#define S32_F "d"
-#define X32_F "x"
-#define SZT_F "uz"
 
 
 

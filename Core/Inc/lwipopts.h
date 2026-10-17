@@ -101,6 +101,10 @@
 #define CHECKSUM_CHECK_ICMP6 0
 /*-----------------------------------------------------------------------------*/
 /* USER CODE BEGIN 1 */
+/* Settings that were previously hand-edited into lwip/opt.h; kept here so a stock opt.h works */
+#define LWIP_TCPIP_CORE_LOCKING    0
+#define LWIP_DHCP_DOES_ACD_CHECK   0
+#define LWIP_NETIF_HOSTNAME        1
 
 /* USER CODE END 1 */
 

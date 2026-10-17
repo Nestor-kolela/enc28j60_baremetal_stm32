@@ -5,10 +5,11 @@
  *      Author:  NK KALAMBAY
  */
 
+#include "../../enc28j60_driver/Inc/enc28j60_hwd.h"
+
 #include <stdint.h>
 #include <stdio.h>
 
-#include "enc28j60_hwd.h"
 #include "log.h"
 
 static uint8_t const mac[6] = {0xED, 0x6A, 0xAF, 0x16, 0x7C, 0x04};
