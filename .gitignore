@@ -112,7 +112,9 @@ __pycache__/
 ######################################
 openocd.log
 gdb.txt
-core
+# core dumps only (a bare "core" also ignored lwip-2.2.1/src/core and Core/)
+/core
+core.[0-9]*
 
 ######################################
 # Segger Ozone / RTT

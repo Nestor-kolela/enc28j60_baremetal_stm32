@@ -9,6 +9,7 @@
 #define _ENC28J60_HWD_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef void (*spiChipSel) (void);
 typedef void (*spiChipDSl) (void);

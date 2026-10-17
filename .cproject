@@ -55,8 +55,8 @@
 									<listOptionValue builtIn="false" value="../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Device/ST/STM32F4xx/Include"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
-									<listOptionValue builtIn="false" value="/home/nestor/Documents/stm32Projects/en28j60_bare_metal/Enc28j60/Inc"/>
-									<listOptionValue builtIn="false" value="/home/nestor/Documents/stm32Projects/en28j60_bare_metal/lwip-2.2.1/src/include"/>
+									<listOptionValue builtIn="false" value="../enc28j60_driver/Inc"/>
+									<listOptionValue builtIn="false" value="../lwip-2.2.1/src/include"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1825165015" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
@@ -83,11 +83,11 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Enc28j60/Src"/>
-						<entry excluding="apps/http" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="lwip-2.2.1/src"/>
-						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="lwip-2.2.1/contrib/ports/STM32F401re/src"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="enc28j60_driver/Src"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="lwip-2.2.1/contrib/ports/STM32F401re/src"/>
+						<entry excluding="netif/ppp|netif/bridgeif.c|netif/bridgeif_fdb.c|netif/lowpan6.c|netif/lowpan6_ble.c|netif/lowpan6_common.c|netif/slipif.c|netif/zepif.c|apps/altcp_tls|apps/http|apps/lwiperf|apps/mdns|apps/netbiosns|apps/smtp|apps/snmp|apps/sntp|apps/tftp" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="lwip-2.2.1/src"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
@@ -136,6 +136,8 @@
 									<listOptionValue builtIn="false" value="../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Device/ST/STM32F4xx/Include"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
+									<listOptionValue builtIn="false" value="../enc28j60_driver/Inc"/>
+									<listOptionValue builtIn="false" value="../lwip-2.2.1/src/include"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.2091697090" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
@@ -164,6 +166,9 @@
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="enc28j60_driver/Src"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="lwip-2.2.1/contrib/ports/STM32F401re/src"/>
+						<entry excluding="netif/ppp|netif/bridgeif.c|netif/bridgeif_fdb.c|netif/lowpan6.c|netif/lowpan6_ble.c|netif/lowpan6_common.c|netif/slipif.c|netif/zepif.c|apps/altcp_tls|apps/http|apps/lwiperf|apps/mdns|apps/netbiosns|apps/smtp|apps/snmp|apps/sntp|apps/tftp" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="lwip-2.2.1/src"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

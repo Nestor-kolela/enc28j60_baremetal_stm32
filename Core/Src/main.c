@@ -21,8 +21,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "enc28j60_hwd.h"
-#include "spiHwdInterface.h"
 #include "lwip/init.h"
 #include "lwip/netif.h"
 #include "netif/ethernet.h"
@@ -36,6 +34,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include "../../enc28j60_driver/Inc/enc28j60_hwd.h"
+#include "../../enc28j60_driver/Inc/spiHwdInterface.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
