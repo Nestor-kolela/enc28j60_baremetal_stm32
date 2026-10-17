@@ -101,7 +101,6 @@ static mqtt_client_t * myMqtt = NULL;
 static bool bSubscribed = false;
 static uint32_t rx_bytes = 0;
 static uint32_t lastReconnectAttempt = 0;
-static bool bTxBusy = false;
 
 /* USER CODE END PV */
 
@@ -288,9 +287,12 @@ int main(void)
 		  break;
 	  }
 
-	  if(enc28j60intCounter > 0) {
-		  //Process the packet then decrement by one.
-		  enc28j60intCounter--;
+	  if(enc28j60intCounter > 0
+			  || HAL_GPIO_ReadPin(ENC28J60_INT_GPIO_Port, ENC28J60_INT_Pin) == GPIO_PIN_RESET) {
+		  //Process the packet then decrement by one. The ISR also writes the counter, so do it with IRQs masked.
+		  __disable_irq();
+		  if(enc28j60intCounter > 0) enc28j60intCounter--;
+		  __enable_irq();
 
 		  uint8_t u8Value = 0;
 		  u8Value = enc28j60_readEtherReg(&dev, dev.bank0.commonRegs.EIR);
@@ -322,13 +324,16 @@ int main(void)
 				case 3:
 					dMesgPrint(DEBUG_INFO, "4) Transmit Interrupt Flag bit\r\n");
 					enc28j60_clear_interrupt(&dev, TXIF);
-					bTxBusy = false;
 					break;
 
 				case 4:
 					dMesgPrint(DEBUG_INFO, "5) Link Change Interrupt Flag bit\r\n");
-					(void) enc28j60_readPhyReg(&dev, dev.phyReg.PHIR);
 					enc28j60_link_change_int_clear(&dev);
+					if(enc28j60_getPhyLinkStatus(&dev)) {
+						netif_set_link_up(&my_netif);
+					} else {
+						netif_set_link_down(&my_netif);
+					}
 					break;
 
 				case 5:
@@ -337,30 +342,7 @@ int main(void)
 					break;
 
 				case 6:
-					dMesgPrint(DEBUG_INFO, "6) Receive Packet Pending Interrupt Flag bit\r\n");
-
-					bool err = enc28j60_etherReceive(&dev);
-
-					enc28j60_clear_interrupt(&dev, PKTIF);
-
-					if (err == true) {
-						//Packet number
-						dMesgPrint(DEBUG_INFO, "PKT number %d\r\n", u32PacketCounter++);
-
-						//Packet length
-						dMesgPrint(DEBUG_INFO, "PKT length %d\r\n", dev.rxPkt.rxPktLen.u16PktLen);
-
-						//Let do the translation from array to pbuf
-						uint16_t u18length = dev.rxPkt.rxPktLen.u16PktLen;
-						struct pbuf * ethBuffer = pbuf_alloc(PBUF_RAW, u18length, PBUF_POOL);
-						if(ethBuffer != NULL) {
-							ethernet_do_translation_to_pbub(&dev, ethBuffer);
-							if (netif_input(ethBuffer, &my_netif) != ERR_OK) {
-								pbuf_free(ethBuffer);
-							}
-						}
-					}
-
+					//Handled below from EPKTCNT (errata: PKTIF is unreliable).
 					break;
 				}
 
@@ -369,6 +351,24 @@ int main(void)
 
 				}
 			}
+
+		  //Drain every pending packet. The driver frees the slot and decrements EPKTCNT itself.
+		  enc28j60_global_int_Clear(&dev);
+		  for(uint8_t pending = enc28j60_getPacketCount(&dev); pending > 0; pending--) {
+			  if(enc28j60_etherReceive(&dev) == true) {
+				  dMesgPrint(DEBUG_INFO, "PKT number %d, length %d\r\n", u32PacketCounter++, dev.rxPkt.rxPktLen.u16PktLen);
+				  struct pbuf * ethBuffer = pbuf_alloc(PBUF_RAW, dev.rxPkt.rxPktLen.u16PktLen, PBUF_POOL);
+				  if(ethBuffer != NULL) {
+					  ethernet_do_translation_to_pbub(&dev, ethBuffer);
+					  if (netif_input(ethBuffer, &my_netif) != ERR_OK) {
+						  pbuf_free(ethBuffer);
+					  }
+				  }
+			  } else if(dev.rxPkt.rxPktLen.u16PktLen == 0 && enc28j60_getPacketCount(&dev) == 0) {
+				  break; //RX was reset
+			  }
+		  }
+		  enc28j60_global_Int_Set(&dev);
 	  }
 
     /* USER CODE END WHILE */
@@ -447,7 +447,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -649,32 +649,29 @@ err_t ethernet_init(struct netif *netif) {
 }
 
 err_t enc28j60_translate(struct netif *netif, struct pbuf *p) {
-	if(bTxBusy != true) {
-		dMesgPrint(DEBUG_INFO, "TX started!\r\n");
-		struct pbuf *q;
-	    uint16_t total_len = p->tot_len;
-	    uint16_t offset = 0;
+	struct pbuf *q;
+	uint16_t total_len = p->tot_len;
+	uint16_t offset = 0;
 
-	    /* Copy the full chained pbuf into linear ENC buffer */
-	    for (q = p; q != NULL; q = q->next)
-	    {
-	        memcpy(&dev.txPkt.data[offset], q->payload, q->len);
-	        offset += q->len;
-	    }
-
-	    /* Safety: offset must equal total length */
-	    if (offset != total_len) {
-	        return ERR_BUF;
-	    }
-
-	    (void) enc28j60_etherTransmit(&dev, dev.txPkt.data, total_len);
-
-	    bTxBusy = true;
-	    return ERR_OK;
-	}else {
-		dMesgPrint(DEBUG_ERROR, "TX busy!\r\n");
-		return ERR_INPROGRESS;
+	if (total_len > sizeof(dev.txPkt.data)) {
+		dMesgPrint(DEBUG_ERROR, "TX frame too long: %u\r\n", total_len);
+		return ERR_BUF;
 	}
+
+	/* Copy the full chained pbuf into linear ENC buffer */
+	for (q = p; q != NULL; q = q->next)
+	{
+		memcpy(&dev.txPkt.data[offset], q->payload, q->len);
+		offset += q->len;
+	}
+
+	/* Safety: offset must equal total length */
+	if (offset != total_len) {
+		return ERR_BUF;
+	}
+
+	/* The driver waits for the previous frame (ECON1.TXRTS) instead of dropping this one */
+	return enc28j60_etherTransmit(&dev, dev.txPkt.data, total_len) ? ERR_OK : ERR_IF;
 }
 
 void ethernet_do_translation_to_pbub(enc28j60Drv * dev, struct pbuf *p) {

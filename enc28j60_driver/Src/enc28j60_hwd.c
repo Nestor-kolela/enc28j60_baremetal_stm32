@@ -41,7 +41,8 @@ static void enc2860_macInit(enc28j60Drv * dev) {
 	enc28j60_writeReg(dev, dev->bank2.MACON1, u8TempValueHolder);
 
 	u8TempValueHolder = enc28j60_readMacMIIReg(dev, dev->bank2.MACON3);
-	u8TempValueHolder |= ((7 << 5) | (1 << 4) | (1 << 2) | 0x01);
+	u8TempValueHolder |= ((7 << 5) | (1 << 4) | (1 << 1) | 0x01); //PADCFG, TXCRCEN, FRMLNEN, FULDPX
+	u8TempValueHolder &= ~(1 << 2); //HFRMEN off: drop frames longer than MAMXFL
 	enc28j60_writeReg(dev, dev->bank2.MACON3, u8TempValueHolder);
 
 	enc28j60_writeReg(dev, dev->bank2.MAMXFLL, dev->MxmPkSize.u8ValLo);
@@ -100,6 +101,8 @@ static void enc28j60_bankChange(enc28j60Drv * dev, encj28j60_bank bBank) {
 	dev->spi.fncPtrWrite(&u8Command, 1);
 	dev->spi.fncPtrWrite(&u8data, 1);
 	dev->spi.fncPtrChipDS();
+	//BSEL is now 00, so the chip is in bank 0 whatever the target is.
+	dev->bnBank = bank_0;
 
 	uint8_t u8CmdNextBank;
 	u8CmdNextBank = (dev->opcode.u8BitFieldSet) | (0x1F & dev->bank0.commonRegs.ECON1);
@@ -169,7 +172,7 @@ static uint16_t enc28j60_getPhyPartNumber(enc28j60Drv * dev) {
 }
 
 static uint32_t enc28j60_getPhyIdentifier(enc28j60Drv * dev) {
-	uint16_t u32returnValue;
+	uint32_t u32returnValue;
 	u32returnValue = (uint32_t) enc28j60_readPhyReg(dev, dev->phyReg.PHID1);
 
 	u32returnValue >>= 0x03;
@@ -275,8 +278,8 @@ void enc28j60_strtDr(enc28j60Drv * dev) {
 	//Program receive filters
 	enc28j60_rxSetFilters(dev, RX_UNICAST | RX_CRC_CHECK | RX_BROADCAST);
 
-	//Enable all interrupts
-	enc28j60_writeReg(dev, dev->bank0.commonRegs.EIE, 0xFF);
+	//INTIE | PKTIE | LINKIE | TXIE | TXERIE | RXERIE (bit 2 is reserved, DMAIE unused)
+	enc28j60_writeReg(dev, dev->bank0.commonRegs.EIE, 0xDB);
 
 	//Are we going to do increment?
 	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON2, (1 << 7));
@@ -298,6 +301,20 @@ void enc28j60_sftRst(enc28j60Drv * dev) {
 }
 
 bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16_t length) {
+	if(length == 0 || length > ENC28J60_MAX_TX_FRAME) return false;
+
+	//0) Never overwrite the TX buffer while the previous frame is still going out (ECON1.TXRTS).
+	//   A 1518 byte frame takes ~1.2 ms at 10 Mbit/s; after the timeout assume TX logic is stuck and reset it.
+	uint32_t u32Poll = 0;
+	while(enc28j60_readEtherReg(dev, dev->bank0.commonRegs.ECON1) & (1 << 3)) {
+		if(++u32Poll > 2000u) {
+			dMesgPrint(DEBUG_ERROR, "TX stuck, resetting TX logic\r\n");
+			enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON1, 1 << 7);
+			enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.ECON1, 1 << 7);
+			break;
+		}
+	}
+
 	//1) Start by writing to the initial address.
 	enc28j60_writeReg(dev, dev->bank0.EWRPTL, dev->txBufStartAddr.u16Val & 0xFF);
 	enc28j60_writeReg(dev, dev->bank0.EWRPTH, dev->txBufStartAddr.u16Val >> 0x08);
@@ -328,8 +345,8 @@ bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16
 	enc28j60_writeReg(dev, dev->bank0.ETXNDL, dev->txPkt.txPktLen.u16PktLen & 0xFF);
 	enc28j60_writeReg(dev, dev->bank0.ETXNDH, dev->txPkt.txPktLen.u16PktLen >> 0x08);
 
-	// Clear EIR.TXIF
-	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIR, 1 << 3);
+	// Clear EIR.TXIF and EIR.TXERIF
+	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIR, (1 << 3) | (1 << 1));
 
 	// Set TXIE and INTIE for interrupt
 	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.EIE, 1 << 3);
@@ -341,7 +358,7 @@ bool enc28j60_etherTransmit(enc28j60Drv * dev, uint8_t * u8PtrData, const uint16
 	//enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON1, 1 << 7);
 	//enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.ECON1, 1 << 7);
 
-	// Start Transmission by setting TXRST found in ECON1.
+	// Start Transmission by setting TXRTS found in ECON1.
 	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON1, 1 << 3);
 
 	return true;
@@ -393,19 +410,32 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 	uint16_t u16Flags = *(dev->rxPkt.rxStatVect + 2);
 	u16Flags |= *(dev->rxPkt.rxStatVect + 3) << 8;
 
-	if(dev->rxPkt.rxPktLen.u16PktLen >= 1518) {
-		//The length can never be 65535, right?
-		for(uint8_t i = 0; i < 4; i++)
-		{
-			dMesgPrint(DEBUG_ERROR, "Status vector registers %d: %d\r\n", i, *(dev->rxPkt.rxStatVect + i));
-		}
-		dMesgPrint(DEBUG_ERROR, "Packet length is probably the result of (0 - 4) which is wrong 0\r\n");
+	uint16_t u16Next = dev->rxPkt.ptrAddr.u16Ptr;
+	uint16_t u16Len = dev->rxPkt.rxPktLen.u16PktLen;
+
+	//A garbage header means the next packet pointer is garbage too: resync the whole RX ring.
+	if(u16Len > ENC28J60_MAX_FRAME || u16Len < ENC28J60_CRC_LEN
+			|| (u16Next & 0x01) || u16Next > dev->rxBufEndAddr.u16Val) {
+		dev->spi.fncPtrChipDS();
+		dMesgPrint(DEBUG_ERROR, "Bad RX header (len %u, next 0x%04X), resetting RX\r\n", u16Len, u16Next);
 		dev->rxPkt.rxPktLen.u16PktLen = 0;
-		bReturnValue = false;
+		enc28j60_rxReset(dev);
+		return false;
 	}
 
+	//RSV bit 23: Received OK. Bad frames are still freed below, just not handed up.
+	if(!(u16Flags & (1 << 7))) {
+		bReturnValue = false;
+		u16Len = ENC28J60_CRC_LEN;
+	}
+
+	//Hand up the frame without the 4 CRC bytes.
+	dev->rxPkt.rxPktLen.u16PktLen = u16Len - ENC28J60_CRC_LEN;
+
 	//There is data available from here.
-	dev->spi.fncPtrRead(dev->rxPkt.data, dev->rxPkt.rxPktLen.u16PktLen);
+	if(dev->rxPkt.rxPktLen.u16PktLen > 0) {
+		dev->spi.fncPtrRead(dev->rxPkt.data, dev->rxPkt.rxPktLen.u16PktLen);
+	}
 
 	//We are done
 	dev->spi.fncPtrChipDS();
@@ -423,12 +453,15 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 	enc28j60_writeReg(dev, dev->bank0.ERXRDPTL, u16ValueToLoad & 0xFF);
 	enc28j60_writeReg(dev, dev->bank0.ERXRDPTH, u16ValueToLoad >> 0x08);
 
+	//One packet consumed: ECON2.PKTDEC
+	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON2, (1 << 6));
+
 	for(uint32_t i = 0; i < 16; i++) {
 		if(u16Flags & (1 << i)) {
 			switch(i) {
 			default:
 				break;
-			case 1:
+			case 0:
 				dMesgPrint(DEBUG_ERROR, "Long/Drop Event\r\n");
 				break;
 			case 2:
@@ -441,7 +474,7 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 				dMesgPrint(DEBUG_ERROR, "Length Chk Err!\r\n");
 				break;
 			case 6:
-				dMesgPrint(DEBUG_ERROR, "Length range!\r\n");
+				//Type field > 1500: normal for every Ethernet II frame, not an error.
 				break;
 			case 7:
 				dMesgPrint(DEBUG_INFO, "Rcv OK!\r\n");
@@ -463,6 +496,7 @@ bool enc28j60_etherReceive(enc28j60Drv * dev) {
 				break;
 			case 13:
 				dMesgPrint(DEBUG_ERROR, "Rcd unkwn opcode\r\n");
+				break;
 			case 14:
 				dMesgPrint(DEBUG_INFO, "VLAN!\r\n");
 				break;
@@ -591,7 +625,39 @@ void enc28j60_global_int_Clear(enc28j60Drv * dev) {
 }
 
 void enc28j60_link_change_int_clear(enc28j60Drv * dev) {
-	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIE, 1 << 4);
+	//EIR.LINKIF is cleared by reading PHIR. Leave EIE.LINKIE alone or later link changes are never reported.
+	(void) enc28j60_readPhyReg(dev, dev->phyReg.PHIR);
+}
+
+uint8_t enc28j60_getPacketCount(enc28j60Drv * dev) {
+	//Errata: EIR.PKTIF is unreliable, EPKTCNT is the source of truth.
+	return enc28j60_readEtherReg(dev, dev->bank1.EPKTCNT);
+}
+
+void enc28j60_rxReset(enc28j60Drv * dev) {
+	//RXEN off, pulse RXRST
+	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.ECON1, (1 << 2));
+	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON1, (1 << 6));
+	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.ECON1, (1 << 6));
+
+	//Re-program the ring exactly like enc28j60_strtDr(). Writing ERXST also resets ERXWRPT.
+	enc28j60_writeReg(dev, dev->bank0.ERXSTL, dev->rxBufStartAddr.u8ValLo);
+	enc28j60_writeReg(dev, dev->bank0.ERXSTH, dev->rxBufStartAddr.u8ValHi);
+	enc28j60_writeReg(dev, dev->bank0.ERXNDL, dev->rxBufEndAddr.u8ValLo);
+	enc28j60_writeReg(dev, dev->bank0.ERXNDH, dev->rxBufEndAddr.u8ValHi);
+	enc28j60_writeReg(dev, dev->bank0.ERXRDPTL, dev->rxBufEndAddr.u8ValLo);
+	enc28j60_writeReg(dev, dev->bank0.ERXRDPTH, dev->rxBufEndAddr.u8ValHi);
+	dev->rxPkt.ptrAddr.u16Ptr = dev->rxBufStartAddr.u16Val;
+	enc28j60_writeReg(dev, dev->bank0.ERDPTL, dev->rxPkt.ptrAddr.ptrLo);
+	enc28j60_writeReg(dev, dev->bank0.ERDPTH, dev->rxPkt.ptrAddr.ptrHi);
+
+	//Drop whatever the packet counter still claims is pending.
+	for(uint16_t i = 0; i < 256 && enc28j60_getPacketCount(dev) > 0; i++) {
+		enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON2, (1 << 6));
+	}
+	enc28j60_BitFieldClear(dev, dev->bank0.commonRegs.EIR, (1 << 0));
+
+	enc28j60_BitFieldSet(dev, dev->bank0.commonRegs.ECON1, (1 << 2));
 }
 enc28j60Drv dev = {
 	.spi 					= { .fncPtrCS = NULL, .fncPtrChipDS = NULL, .fncPtrWrite = NULL, .fncPtrRead = NULL},
@@ -789,7 +855,7 @@ enc28j60Drv dev = {
 	.txBufStartAddr			= {.u16Val	= 0x1800},
 	.txBufEndAddr			= {.u16Val	= 0x1FFF},
 
-	.MxmPkSize				= {.u16Val  = 1500},
+	.MxmPkSize				= {.u16Val  = ENC28J60_MAX_FRAME},
 
 	.mac					= {
 		.u8Mac0 			= mac[0],

@@ -11,6 +11,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define ENC28J60_MAX_FRAME		1518u	//DA+SA+type+1500 payload+CRC
+#define ENC28J60_MAX_TX_FRAME	1514u	//What lwIP hands linkoutput (no CRC, the MAC appends it)
+#define ENC28J60_CRC_LEN		4u
+
 typedef void (*spiChipSel) (void);
 typedef void (*spiChipDSl) (void);
 typedef void (*slaveWrite) (uint8_t * ptrData, uint16_t const u16length);
@@ -334,7 +338,7 @@ typedef struct __attribute__((packed)) _enc28j60_rx_packet
 	pktLength rxPktLen;
 
 	//Data and all possible padding
-	uint8_t	data[1500];
+	uint8_t	data[ENC28J60_MAX_FRAME];
 
 	//Pointer Keeper
 	addrPtr ptrAddr;
@@ -347,7 +351,7 @@ typedef struct __attribute__((packed)) _enc28j60_tx_packet
 	pktLength txPktLen;
 
 	//Data buffer
-	uint8_t	data[1500];
+	uint8_t	data[ENC28J60_MAX_TX_FRAME];
 }enc28j60_tx_packet;
 
 typedef struct _enc28j60_driver
@@ -408,5 +412,7 @@ void enc28j60_clear_interrupt(enc28j60Drv * dev, enc28j60_eth_int_flag flags);
 void enc28j60_global_Int_Set(enc28j60Drv * dev);
 void enc28j60_global_int_Clear(enc28j60Drv * dev);
 void enc28j60_link_change_int_clear(enc28j60Drv * dev);
+uint8_t enc28j60_getPacketCount(enc28j60Drv * dev);
+void enc28j60_rxReset(enc28j60Drv * dev);
 
 #endif /* _ENC28J60_HWD_H_ */
